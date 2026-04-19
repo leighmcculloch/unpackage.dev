@@ -140,15 +140,18 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null) {
     if (!res.ok) throw new Error(`crate not found: ${name}`);
     const data = await res.json();
     state.crate = data.crate;
-    state.versions = (data.versions || []).filter((v) => !v.yanked);
+    state.versions = data.versions || [];
 
     if (!state.versions.length) {
-      throw new Error("no non-yanked versions available");
+      throw new Error("no versions available");
     }
 
     const versionsByNum = new Map(state.versions.map((v) => [v.num, v]));
-    const fallbackRight = state.versions[0].num;
-    const fallbackLeft = state.versions[1]?.num ?? state.versions[0].num;
+    const live = state.versions.filter((v) => !v.yanked);
+    // Defaults prefer non-yanked versions; fall back to yanked only if the
+    // crate has nothing but yanked releases.
+    const fallbackRight = (live[0] ?? state.versions[0]).num;
+    const fallbackLeft = (live[1] ?? live[0] ?? state.versions[1] ?? state.versions[0]).num;
 
     state.right = versionsByNum.has(preferredRight) ? preferredRight : fallbackRight;
     state.left = versionsByNum.has(preferredLeft) ? preferredLeft : fallbackLeft;
@@ -167,7 +170,11 @@ function paintCompare() {
   crateLinkEl.href = `https://crates.io/crates/${state.crate.name}`;
 
   const opts = state.versions
-    .map((v) => `<option value="${escapeHtml(v.num)}">${escapeHtml(v.num)}</option>`)
+    .map((v) => {
+      const label = v.yanked ? `${v.num} (yanked)` : v.num;
+      const cls = v.yanked ? ' class="yanked"' : "";
+      return `<option value="${escapeHtml(v.num)}"${cls}>${escapeHtml(label)}</option>`;
+    })
     .join("");
   leftSel.innerHTML = opts;
   rightSel.innerHTML = opts;
