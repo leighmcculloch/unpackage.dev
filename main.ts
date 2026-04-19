@@ -1,4 +1,4 @@
-import { serveDir } from "jsr:@std/http/file-server";
+import { serveDir } from "jsr:@std/http@1/file-server";
 
 const CRATES_IO_API = "https://crates.io/api/v1";
 const USER_AGENT = "crates-diff (https://github.com/leighmcculloch)";
@@ -29,7 +29,9 @@ async function handler(req: Request): Promise<Response> {
     const q = url.searchParams.get("q") ?? "";
     const per = url.searchParams.get("per_page") ?? "10";
     return proxyJson(
-      `${CRATES_IO_API}/crates?q=${encodeURIComponent(q)}&per_page=${encodeURIComponent(per)}`,
+      `${CRATES_IO_API}/crates?q=${encodeURIComponent(q)}&per_page=${
+        encodeURIComponent(per)
+      }`,
     );
   }
 
@@ -44,14 +46,17 @@ async function handler(req: Request): Promise<Response> {
     if (slash < 0) return new Response("bad request", { status: 400 });
     const name = rest.slice(0, slash);
     const version = rest.slice(slash + 1);
-    const upstream =
-      `${CRATES_IO_API}/crates/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`;
+    const upstream = `${CRATES_IO_API}/crates/${encodeURIComponent(name)}/${
+      encodeURIComponent(version)
+    }/download`;
     const res = await fetch(upstream, {
       headers: { "User-Agent": USER_AGENT },
       redirect: "follow",
     });
     if (!res.ok || !res.body) {
-      return new Response(`upstream error: ${res.status}`, { status: res.status });
+      return new Response(`upstream error: ${res.status}`, {
+        status: res.status,
+      });
     }
     return new Response(res.body, {
       status: 200,
