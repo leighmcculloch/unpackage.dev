@@ -50,9 +50,10 @@ function writeHash() {
   if (state.selectedFile) {
     h += `/${state.selectedFile}`;
     if (state.selection) {
+      const prefix = state.selection.side === "old" ? "R" : "L";
       h += state.selection.a === state.selection.b
-        ? `?L${state.selection.a}`
-        : `?L${state.selection.a}-L${state.selection.b}`;
+        ? `?${prefix}${state.selection.a}`
+        : `?${prefix}${state.selection.a}-${prefix}${state.selection.b}`;
     }
   }
   if (location.hash.slice(1) !== h) history.replaceState(null, "", `#${h}`);
@@ -88,11 +89,14 @@ function parseHash() {
 }
 
 function parseLineRange(s) {
-  const m = s.match(/^L(\d+)(?:-L(\d+))?$/);
+  // Accepts L<n> / R<n> / L<a>-L<b> / R<a>-R<b>. Both ends of a range must
+  // use the same side prefix.
+  const m = s.match(/^([LR])(\d+)(?:-\1(\d+))?$/);
   if (!m) return null;
-  const a = parseInt(m[1], 10);
-  const b = m[2] ? parseInt(m[2], 10) : a;
-  return { a: Math.min(a, b), b: Math.max(a, b) };
+  const side = m[1] === "R" ? "old" : "new";
+  const a = parseInt(m[2], 10);
+  const b = m[3] ? parseInt(m[3], 10) : a;
+  return { side, a: Math.min(a, b), b: Math.max(a, b) };
 }
 
 // ---------- search ----------
@@ -747,13 +751,26 @@ diffEl.addEventListener("click", (e) => {
   }
 
   // Click on a line-number gutter → select that line (Shift to extend range).
+  // First gutter = old side, second gutter = new side.
   const lnEl = e.target.closest(".ln");
   if (lnEl) {
     const lineEl = lnEl.closest(".line[data-new-line], .line[data-old-line]");
     if (lineEl) {
-      e.stopPropagation();
-      handleLineSelect(lineEl, e.shiftKey);
-      return;
+      const gutters = lineEl.querySelectorAll(".ln");
+      const idx = [...gutters].indexOf(lnEl);
+      let side = null, anchor = null;
+      if (idx === 0 && lineEl.dataset.oldLine) {
+        side = "old";
+        anchor = parseInt(lineEl.dataset.oldLine, 10);
+      } else if (idx === 1 && lineEl.dataset.newLine) {
+        side = "new";
+        anchor = parseInt(lineEl.dataset.newLine, 10);
+      }
+      if (side) {
+        e.stopPropagation();
+        handleLineSelect(lineEl, side, anchor, e.shiftKey);
+        return;
+      }
     }
   }
 
@@ -769,24 +786,20 @@ diffEl.addEventListener("click", (e) => {
 
 // ---------- line selection ----------
 
-function handleLineSelect(lineEl, extend) {
+function handleLineSelect(lineEl, side, anchor, extend) {
   const fileEl = lineEl.closest(".file");
   if (!fileEl) return;
   const f = state.files.get(fileEl.id);
   if (!f) return;
-  const newLn = lineEl.dataset.newLine ? parseInt(lineEl.dataset.newLine, 10) : null;
-  // Selection anchors on the new-side line number. Deletion-only lines don't
-  // have one, so clicking them clears the selection.
-  if (newLn == null) {
-    state.selection = null;
-    state.selectedFile = null;
-  } else if (extend && state.selection && state.selectedFile === f.path) {
-    const a = Math.min(state.selection.a, newLn);
-    const b = Math.max(state.selection.b, newLn);
-    state.selection = { a, b };
+  const sameFile = state.selectedFile === f.path;
+  const sameSide = state.selection && state.selection.side === side;
+  if (extend && sameFile && sameSide) {
+    const a = Math.min(state.selection.a, anchor);
+    const b = Math.max(state.selection.b, anchor);
+    state.selection = { side, a, b };
   } else {
     state.selectedFile = f.path;
-    state.selection = { a: newLn, b: newLn };
+    state.selection = { side, a: anchor, b: anchor };
   }
   applyHighlight();
   writeHash();
@@ -799,9 +812,11 @@ function applyHighlight() {
   if (!f) return;
   const fileEl = document.getElementById(f.id);
   if (!fileEl) return;
-  const { a, b } = state.selection;
-  fileEl.querySelectorAll(".line[data-new-line]").forEach((el) => {
-    const n = parseInt(el.dataset.newLine, 10);
+  const { side, a, b } = state.selection;
+  const dataKey = side === "old" ? "oldLine" : "newLine";
+  const attr = side === "old" ? "data-old-line" : "data-new-line";
+  fileEl.querySelectorAll(`.line[${attr}]`).forEach((el) => {
+    const n = parseInt(el.dataset[dataKey], 10);
     if (n >= a && n <= b) el.classList.add("selected");
   });
 }
@@ -821,42 +836,42 @@ function applyFileNavigation() {
   }
   if (state.selection) {
     applyHighlight();
-    const target = el.querySelector(`.line[data-new-line="${state.selection.a}"]`);
+    const { side, a } = state.selection;
+    const attr = side === "old" ? "data-old-line" : "data-new-line";
+    const target = el.querySelector(`.line[${attr}="${a}"]`);
     if (target) { target.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
   }
   el.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 // Expand any gaps that fall within the selected line range so the highlighted
-// lines are actually visible when navigating from a shared URL.
+// lines are actually visible when navigating from a shared URL. Gap line
+// numbering is unchanged on both sides, so we can use either depending on the
+// selection side.
 function expandGapsCoveringRange(f, range) {
   if (!f.hunks || !f.hunks.length) return;
-  // Iterate gaps (before each hunk and trailing) and mark those that intersect.
-  const rightLines = f.rightText.split("\n");
+  const useOld = range.side === "old";
   const leftMax = trimTrailingEmpty(f.leftText.split("\n")).length;
-  const rightMax = trimTrailingEmpty(rightLines).length;
+  const rightMax = trimTrailingEmpty(f.rightText.split("\n")).length;
   for (let i = 0; i < f.hunks.length; i++) {
     const h = f.hunks[i];
     const prev = f.hunks[i - 1];
+    const gapOldStart = prev ? prev.oldStart + prev.oldLines : 1;
     const gapNewStart = prev ? prev.newStart + prev.newLines : 1;
-    const gapLen = Math.min(
-      h.oldStart - (prev ? prev.oldStart + prev.oldLines : 1),
-      h.newStart - gapNewStart,
-    );
-    if (gapLen > 0) {
-      const gapEnd = gapNewStart + gapLen - 1;
-      if (range.b >= gapNewStart && range.a <= gapEnd) f.expandedGaps.add(i);
-    }
+    const gapLen = Math.min(h.oldStart - gapOldStart, h.newStart - gapNewStart);
+    if (gapLen <= 0) continue;
+    const start = useOld ? gapOldStart : gapNewStart;
+    const end = start + gapLen - 1;
+    if (range.b >= start && range.a <= end) f.expandedGaps.add(i);
   }
   const last = f.hunks[f.hunks.length - 1];
+  const tailOldStart = last.oldStart + last.oldLines;
   const tailNewStart = last.newStart + last.newLines;
-  const tailLen = Math.min(
-    leftMax - (last.oldStart + last.oldLines) + 1,
-    rightMax - tailNewStart + 1,
-  );
+  const tailLen = Math.min(leftMax - tailOldStart + 1, rightMax - tailNewStart + 1);
   if (tailLen > 0) {
-    const tailEnd = tailNewStart + tailLen - 1;
-    if (range.b >= tailNewStart && range.a <= tailEnd) f.expandedGaps.add(f.hunks.length);
+    const start = useOld ? tailOldStart : tailNewStart;
+    const end = start + tailLen - 1;
+    if (range.b >= start && range.a <= end) f.expandedGaps.add(f.hunks.length);
   }
 }
 

@@ -397,11 +397,17 @@ select option.yanked {
 }
 .toolbar-spacer { flex: 1; }
 
-/* Collapsed top bar — hide everything but the toolbar itself so users can
-   reclaim vertical space while browsing large diffs. */
-.topbar.collapsed header,
+/* Collapsed top bar — hide the bulk of the content but leave a thin strip
+   containing the toggle button so users can restore it. */
+.topbar.collapsed .header-main,
 .topbar.collapsed .search,
 .topbar.collapsed .compare-wrap { display: none; }
+
+.topbar.collapsed header {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  justify-content: flex-end;
+}
 
 .topbar.collapsed .toolbar {
   padding-top: 0.3rem;
