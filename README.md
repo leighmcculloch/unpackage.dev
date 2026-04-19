@@ -3,14 +3,16 @@
 A small [Deno] web app that lets you search [crates.io] and view a folder-style
 git diff between any two published versions of a crate.
 
+Live at <https://crate-diff.leigh.deno.net/>.
+
 By default the right side shows the latest version and the left side shows the
 version before it. Change either selector to diff any two versions.
 
 The comparison state lives in the URL hash, so a link like
-`http://localhost:8000/#serde/1.0.227...1.0.228` opens directly to that diff
-and is shareable.
+<https://crate-diff.leigh.deno.net/#serde/1.0.227...1.0.228> opens directly to
+that diff and is shareable.
 
-## Running
+## Running locally
 
 ```
 deno run --allow-net --allow-read --allow-env main.ts
