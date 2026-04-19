@@ -8,33 +8,59 @@
 </head>
 <body>
 <header>
-  <h1>crates-diff</h1>
+  <h1><span class="dot" aria-hidden="true"></span>crates-diff</h1>
   <p class="tag">Compare any two versions of a <a href="https://crates.io">crates.io</a> crate as a folder diff.</p>
 </header>
 
 <section class="search">
-  <input id="search" type="text" placeholder="Search crates.io&hellip;" autocomplete="off" spellcheck="false" />
+  <div class="search-box">
+    <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    <input id="search" type="text" placeholder="Search crates.io&hellip;" autocomplete="off" spellcheck="false" />
+  </div>
   <ul id="results" hidden></ul>
 </section>
 
-<section class="compare" hidden id="compare">
-  <div class="crate-title">
-    <span id="crate-name"></span>
-    <a id="crate-link" target="_blank" rel="noopener">crates.io &rarr;</a>
+<section class="compare-wrap" hidden id="compare">
+  <div class="card">
+    <div class="crate-title">
+      <span id="crate-name"></span>
+      <span class="title-sep">·</span>
+      <a id="crate-link" target="_blank" rel="noopener">crates.io &rarr;</a>
+      <div class="title-spacer"></div>
+      <button id="copy-link" class="btn btn-ghost" type="button" title="Copy shareable link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
+          <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/>
+        </svg>
+        <span class="label">Copy link</span>
+      </button>
+    </div>
+    <div class="versions">
+      <label class="ver">
+        <span>old</span>
+        <select id="left-version"></select>
+      </label>
+      <div class="arrow" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </svg>
+      </div>
+      <label class="ver">
+        <span>new</span>
+        <select id="right-version"></select>
+      </label>
+    </div>
+    <div class="stats" id="stats"></div>
   </div>
-  <div class="versions">
-    <label class="ver left">
-      <span>left (old)</span>
-      <select id="left-version"></select>
-    </label>
-    <div class="arrow">&rarr;</div>
-    <label class="ver right">
-      <span>right (new)</span>
-      <select id="right-version"></select>
-    </label>
-  </div>
-  <div class="stats" id="stats"></div>
 </section>
+
+<div class="toolbar" id="toolbar" hidden>
+  <button id="expand-all"   class="btn btn-ghost" type="button">Expand all</button>
+  <button id="collapse-all" class="btn btn-ghost" type="button">Collapse all</button>
+  <div class="toolbar-spacer"></div>
+</div>
 
 <section class="diff" id="diff"></section>
 

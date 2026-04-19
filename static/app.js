@@ -12,6 +12,10 @@ const leftSel = $("left-version");
 const rightSel = $("right-version");
 const statsEl = $("stats");
 const diffEl = $("diff");
+const toolbarEl = $("toolbar");
+const copyLinkBtn = $("copy-link");
+const expandAllBtn = $("expand-all");
+const collapseAllBtn = $("collapse-all");
 
 const state = {
   crate: null,           // crates.io crate object
@@ -315,8 +319,12 @@ async function loadDiff() {
     return;
   }
 
-  diffEl.innerHTML = `<div class="loading">Fetching ${escapeHtml(state.crate.name)} ${escapeHtml(left)} and ${escapeHtml(right)}&hellip;</div>`;
-  statsEl.textContent = "";
+  diffEl.innerHTML =
+    `<div class="loading"><span class="spinner"></span>Fetching ${
+      escapeHtml(state.crate.name)
+    } ${escapeHtml(left)} and ${escapeHtml(right)}&hellip;</div>`;
+  statsEl.innerHTML = "";
+  toolbarEl.hidden = true;
 
   try {
     const [leftFiles, rightFiles] = await Promise.all([
@@ -328,6 +336,7 @@ async function loadDiff() {
   } catch (err) {
     if (token !== state.loadToken) return;
     diffEl.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+    toolbarEl.hidden = true;
   }
 }
 
@@ -356,39 +365,69 @@ function renderDiff(left, right) {
     const bIsBin = b ? isBinary(b) : false;
 
     if (aIsBin || bIsBin) {
-      fragments.push(renderFile(path, status, `<div class="line">Binary file differs.</div>`, true));
+      fragments.push(renderFile(path, status, {
+        bodyHtml: `<div class="file-note">Binary file differs.</div>`,
+        isBinary: true,
+        adds: 0,
+        dels: 0,
+      }));
       continue;
     }
 
     const aText = a ? decodeText(a) : "";
     const bText = b ? decodeText(b) : "";
     const patch = Diff.createPatch(path, aText, bText, "", "", { context: 3 });
-    fragments.push(renderFile(path, status, renderPatchBody(patch), false));
+    const rendered = renderPatchBody(patch);
+    fragments.push(renderFile(path, status, {
+      bodyHtml: rendered.html,
+      isBinary: false,
+      adds: rendered.adds,
+      dels: rendered.dels,
+    }));
   }
 
   const total = paths.length;
-  statsEl.textContent =
-    `${total} files · ${added} added · ${removed} removed · ${modified} modified · ${unchanged} unchanged`;
+  statsEl.innerHTML = renderStats({ total, added, removed, modified, unchanged });
 
   if (!fragments.length) {
     diffEl.innerHTML = `<div class="empty">No differences between these versions.</div>`;
+    toolbarEl.hidden = true;
   } else {
     diffEl.innerHTML = fragments.join("");
+    toolbarEl.hidden = false;
     diffEl.querySelectorAll(".file-header").forEach((h) => {
       h.addEventListener("click", () => h.parentElement.classList.toggle("collapsed"));
     });
   }
 }
 
-function renderFile(path, status, bodyHtml, isBinary) {
-  const badges = [];
-  badges.push(`<span class="badge ${status}">${status}</span>`);
+function renderStats({ total, added, removed, modified, unchanged }) {
+  const chips = [
+    `<span class="chip"><span class="n">${total}</span>&nbsp;files</span>`,
+  ];
+  if (added)     chips.push(`<span class="chip added"><span class="n">+${added}</span> added</span>`);
+  if (removed)   chips.push(`<span class="chip removed"><span class="n">-${removed}</span> removed</span>`);
+  if (modified)  chips.push(`<span class="chip modified"><span class="n">~${modified}</span> modified</span>`);
+  if (unchanged) chips.push(`<span class="chip"><span class="n">${unchanged}</span> unchanged</span>`);
+  return chips.join("");
+}
+
+const CHEVRON_SVG =
+  `<svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+function renderFile(path, status, { bodyHtml, isBinary, adds, dels }) {
+  const badges = [`<span class="badge ${status}">${status}</span>`];
   if (isBinary) badges.push(`<span class="badge binary">binary</span>`);
+  const counts = (adds || dels)
+    ? `<span class="counts"><span class="add">+${adds}</span><span class="del">-${dels}</span></span>`
+    : "";
   return `
-    <div class="file" data-path="${escapeHtml(path)}">
+    <div class="file" data-status="${status}" data-path="${escapeHtml(path)}">
       <div class="file-header">
+        ${CHEVRON_SVG}
         <span class="path">${escapeHtml(path)}</span>
-        <span>${badges.join("")}</span>
+        ${counts}
+        ${badges.join("")}
       </div>
       <div class="file-body">${bodyHtml}</div>
     </div>
@@ -399,24 +438,53 @@ function renderPatchBody(patch) {
   // Drop jsdiff's "Index:" / "===" header and its own ---/+++ lines; we show the path separately.
   const lines = patch.split("\n");
   const out = [];
+  let oldNo = 0, newNo = 0;
+  let adds = 0, dels = 0;
+
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("Index: ")) continue;
     if (line.startsWith("=====")) continue;
     if (line.startsWith("--- ") || line.startsWith("+++ ")) continue;
+
     if (line.startsWith("@@")) {
-      out.push(`<div class="hunk line">${escapeHtml(line)}</div>`);
-    } else if (line.startsWith("+")) {
-      out.push(`<div class="line add">${escapeHtml(line)}</div>`);
-    } else if (line.startsWith("-")) {
-      out.push(`<div class="line del">${escapeHtml(line)}</div>`);
-    } else if (line.startsWith("\\")) {
-      out.push(`<div class="line">${escapeHtml(line)}</div>`);
+      const m = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (m) { oldNo = parseInt(m[1], 10); newNo = parseInt(m[2], 10); }
+      out.push(
+        `<div class="line hunk"><span class="ln">@@</span><span class="lc">${escapeHtml(line)}</span></div>`,
+      );
+      continue;
+    }
+    if (line.startsWith("\\")) {
+      // "\ No newline at end of file"
+      out.push(
+        `<div class="line note"><span class="ln"></span><span class="ln"></span><span class="lc">${escapeHtml(line)}</span></div>`,
+      );
+      continue;
+    }
+
+    const content = line.slice(1);
+    if (line[0] === "+") {
+      adds++;
+      out.push(
+        `<div class="line add"><span class="ln"></span><span class="ln">${newNo}</span><span class="lc">+${escapeHtml(content)}</span></div>`,
+      );
+      newNo++;
+    } else if (line[0] === "-") {
+      dels++;
+      out.push(
+        `<div class="line del"><span class="ln">${oldNo}</span><span class="ln"></span><span class="lc">-${escapeHtml(content)}</span></div>`,
+      );
+      oldNo++;
     } else {
-      out.push(`<div class="line">${escapeHtml(line)}</div>`);
+      out.push(
+        `<div class="line"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`,
+      );
+      oldNo++;
+      newNo++;
     }
   }
-  return out.join("");
+  return { html: out.join(""), adds, dels };
 }
 
 function bytesEqual(a, b) {
@@ -445,6 +513,32 @@ function escapeHtml(s) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 }
+
+// ---------- toolbar actions ----------
+
+copyLinkBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    const label = copyLinkBtn.querySelector(".label");
+    const prev = label ? label.textContent : null;
+    copyLinkBtn.classList.add("copied");
+    if (label) label.textContent = "Copied";
+    setTimeout(() => {
+      copyLinkBtn.classList.remove("copied");
+      if (label && prev) label.textContent = prev;
+    }, 1200);
+  } catch {
+    // Clipboard unavailable (e.g. insecure context) — ignore quietly.
+  }
+});
+
+expandAllBtn.addEventListener("click", () => {
+  diffEl.querySelectorAll(".file").forEach((f) => f.classList.remove("collapsed"));
+});
+
+collapseAllBtn.addEventListener("click", () => {
+  diffEl.querySelectorAll(".file").forEach((f) => f.classList.add("collapsed"));
+});
 
 // ---------- bootstrap ----------
 
