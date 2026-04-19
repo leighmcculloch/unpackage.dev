@@ -10,8 +10,16 @@
 <div class="app">
   <div class="topbar">
     <header>
-      <h1><span class="dot" aria-hidden="true"></span>crates-diff</h1>
-      <p class="tag">Compare any two versions of a <a href="https://crates.io">crates.io</a> crate as a folder diff.</p>
+      <div class="header-main">
+        <h1><span class="dot" aria-hidden="true"></span>crates-diff</h1>
+        <p class="tag">Compare any two versions of a <a href="https://crates.io">crates.io</a> crate as a folder diff.</p>
+      </div>
+      <button id="topbar-toggle" class="btn btn-ghost" type="button" title="Hide top">
+        <svg class="chev-up" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="18 15 12 9 6 15"/>
+        </svg>
+        <span class="label">Hide top</span>
+      </button>
     </header>
 
     <section class="search">
@@ -54,20 +62,14 @@
             <select id="right-version"></select>
           </label>
         </div>
-        <div class="stats" id="stats"></div>
       </div>
     </section>
 
     <div class="toolbar" id="toolbar" hidden>
+      <div class="toolbar-spacer"></div>
+      <div class="stats" id="stats"></div>
       <button id="expand-all"   class="btn btn-ghost" type="button">Expand all</button>
       <button id="collapse-all" class="btn btn-ghost" type="button">Collapse all</button>
-      <div class="toolbar-spacer"></div>
-      <button id="topbar-toggle" class="btn btn-ghost" type="button" title="Hide top">
-        <svg class="chev-up" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="18 15 12 9 6 15"/>
-        </svg>
-        <span class="label">Hide top</span>
-      </button>
     </div>
   </div>
 

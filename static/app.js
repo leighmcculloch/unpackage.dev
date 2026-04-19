@@ -34,6 +34,8 @@ const state = {
   files: new Map(),    // id -> FileData
   order: [],           // file ids in render order
   filter: "changed",   // "changed" | "all"
+  selectedFile: null,  // file path persisted in URL
+  selection: null,     // { a, b } — new-side line numbers (inclusive)
 };
 
 // Paths that default to collapsed — noisy but frequently regenerated files.
@@ -45,6 +47,14 @@ function writeHash() {
   if (!state.crate) return;
   let h = state.crate.name;
   if (state.left && state.right) h += `/${state.left}...${state.right}`;
+  if (state.selectedFile) {
+    h += `/${state.selectedFile}`;
+    if (state.selection) {
+      h += state.selection.a === state.selection.b
+        ? `?L${state.selection.a}`
+        : `?L${state.selection.a}-L${state.selection.b}`;
+    }
+  }
   if (location.hash.slice(1) !== h) history.replaceState(null, "", `#${h}`);
 }
 
@@ -52,12 +62,37 @@ function parseHash() {
   const raw = decodeURIComponent(location.hash.slice(1));
   if (!raw) return null;
   const slash = raw.indexOf("/");
-  if (slash < 0) return { name: raw, left: null, right: null };
+  if (slash < 0) return { name: raw, left: null, right: null, file: null, range: null };
   const name = raw.slice(0, slash);
   const rest = raw.slice(slash + 1);
   const sep = rest.indexOf("...");
-  if (sep < 0) return { name, left: null, right: null };
-  return { name, left: rest.slice(0, sep), right: rest.slice(sep + 3) };
+  if (sep < 0) return { name, left: null, right: null, file: null, range: null };
+  const left = rest.slice(0, sep);
+  const afterVer = rest.slice(sep + 3);
+  const filesep = afterVer.indexOf("/");
+  let right, file = null, range = null;
+  if (filesep < 0) {
+    right = afterVer;
+  } else {
+    right = afterVer.slice(0, filesep);
+    const filePart = afterVer.slice(filesep + 1);
+    const q = filePart.indexOf("?");
+    if (q < 0) {
+      file = filePart;
+    } else {
+      file = filePart.slice(0, q);
+      range = parseLineRange(filePart.slice(q + 1));
+    }
+  }
+  return { name, left, right, file, range };
+}
+
+function parseLineRange(s) {
+  const m = s.match(/^L(\d+)(?:-L(\d+))?$/);
+  if (!m) return null;
+  const a = parseInt(m[1], 10);
+  const b = m[2] ? parseInt(m[2], 10) : a;
+  return { a: Math.min(a, b), b: Math.max(a, b) };
 }
 
 // ---------- search ----------
@@ -136,7 +171,7 @@ function paintActiveResult() {
 
 // ---------- crate selection ----------
 
-async function selectCrate(name, preferredLeft = null, preferredRight = null) {
+async function selectCrate(name, preferredLeft = null, preferredRight = null, preferredFile = null, preferredRange = null) {
   resultsEl.hidden = true;
   searchInput.value = name;
   diffEl.innerHTML =
@@ -144,6 +179,8 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null) {
   statsEl.innerHTML = "";
   toolbarEl.hidden = true;
   sidebarEl.hidden = true;
+  state.selectedFile = preferredFile;
+  state.selection = preferredRange;
 
   try {
     const res = await fetch(`/api/crate/${encodeURIComponent(name)}`);
@@ -164,6 +201,7 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null) {
     paintCompare();
     writeHash();
     await loadDiff();
+    if (state.selectedFile) applyFileNavigation();
   } catch (err) {
     diffEl.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
   }
@@ -502,13 +540,13 @@ function renderDiffBody(f) {
     const gapOldStart = prev ? prev.oldStart + prev.oldLines : 1;
     const gapNewStart = prev ? prev.newStart + prev.newLines : 1;
     const gapLen = Math.min(h.oldStart - gapOldStart, h.newStart - gapNewStart);
+    const expanded = f.expandedGaps.has(i);
 
-    if (gapLen > 0 && f.expandedGaps.has(i)) {
-      out.push(renderGapLines(gapOldStart, gapNewStart, gapLen, rightLines));
-      out.push(renderHunk(h));
-    } else if (gapLen > 0) {
-      // Merge the gap expander into this hunk's header row.
-      out.push(renderHunk(h, { fileId: f.id, gapIdx: i, gapLen }));
+    if (gapLen > 0) {
+      if (expanded) {
+        out.push(renderGapLines(gapOldStart, gapNewStart, gapLen, rightLines));
+      }
+      out.push(renderHunk(h, { fileId: f.id, gapIdx: i, gapLen, expanded }));
     } else {
       out.push(renderHunk(h));
     }
@@ -521,11 +559,11 @@ function renderDiffBody(f) {
   const tailLen = Math.min(leftMax - tailOldStart + 1, rightMax - tailNewStart + 1);
   if (tailLen > 0) {
     const tailIdx = hunks.length;
-    if (f.expandedGaps.has(tailIdx)) {
+    const expanded = f.expandedGaps.has(tailIdx);
+    if (expanded) {
       out.push(renderGapLines(tailOldStart, tailNewStart, tailLen, rightLines));
-    } else {
-      out.push(renderStandaloneGap(f.id, tailIdx, tailLen));
     }
+    out.push(renderStandaloneGap(f.id, tailIdx, tailLen, expanded));
   }
 
   return out.join("");
@@ -542,11 +580,12 @@ function renderHunk(h, expand) {
   const title = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
   if (expand) {
     const noun = expand.gapLen === 1 ? "line" : "lines";
+    const action = expand.expanded ? "Hide" : "Show";
     out.push(
-      `<div class="line hunk expandable" data-file="${expand.fileId}" data-gap="${expand.gapIdx}" title="Expand ${expand.gapLen} unchanged ${noun}">` +
+      `<div class="line hunk expandable" data-file="${expand.fileId}" data-gap="${expand.gapIdx}" title="${action} ${expand.gapLen} unchanged ${noun}">` +
         `<span class="ln">↕ @@</span>` +
         `<span class="lc">${escapeHtml(title)}` +
-          ` <span class="gap-label">· Show ${expand.gapLen} unchanged ${noun}</span>` +
+          ` <span class="gap-label">· ${action} ${expand.gapLen} unchanged ${noun}</span>` +
         `</span>` +
       `</div>`,
     );
@@ -563,13 +602,13 @@ function renderHunk(h, expand) {
     }
     const content = line.slice(1);
     if (line[0] === "+") {
-      out.push(`<div class="line add"><span class="ln"></span><span class="ln">${newNo}</span><span class="lc">+${escapeHtml(content)}</span></div>`);
+      out.push(`<div class="line add" data-new-line="${newNo}"><span class="ln"></span><span class="ln">${newNo}</span><span class="lc">+${escapeHtml(content)}</span></div>`);
       newNo++;
     } else if (line[0] === "-") {
-      out.push(`<div class="line del"><span class="ln">${oldNo}</span><span class="ln"></span><span class="lc">-${escapeHtml(content)}</span></div>`);
+      out.push(`<div class="line del" data-old-line="${oldNo}"><span class="ln">${oldNo}</span><span class="ln"></span><span class="lc">-${escapeHtml(content)}</span></div>`);
       oldNo++;
     } else {
-      out.push(`<div class="line"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
+      out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
       oldNo++; newNo++;
     }
   }
@@ -582,14 +621,15 @@ function renderGapLines(oldStart, newStart, length, rightLines) {
     const oldNo = oldStart + i;
     const newNo = newStart + i;
     const content = rightLines[newNo - 1] ?? "";
-    out.push(`<div class="line"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
+    out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
   }
   return out.join("");
 }
 
-function renderStandaloneGap(fileId, gapIdx, length) {
+function renderStandaloneGap(fileId, gapIdx, length, expanded) {
   const noun = length === 1 ? "line" : "lines";
-  return `<div class="line gap" data-file="${fileId}" data-gap="${gapIdx}"><span class="ln">↕</span><span class="lc">Show ${length} unchanged ${noun}</span></div>`;
+  const action = expanded ? "Hide" : "Show";
+  return `<div class="line gap" data-file="${fileId}" data-gap="${gapIdx}"><span class="ln">↕</span><span class="lc">${action} ${length} unchanged ${noun}</span></div>`;
 }
 
 // ---------- sidebar ----------
@@ -676,17 +716,22 @@ function rerenderFile(id) {
 
 diffEl.addEventListener("click", (e) => {
   // Gap expander — both standalone gap rows and merged hunk-header rows.
+  // Clicking toggles expansion so the user can collapse it back.
   const gap = e.target.closest(".line.gap, .line.hunk.expandable");
   if (gap) {
     const f = state.files.get(gap.dataset.file);
     if (f) {
-      f.expandedGaps.add(parseInt(gap.dataset.gap, 10));
+      const idx = parseInt(gap.dataset.gap, 10);
+      if (f.expandedGaps.has(idx)) f.expandedGaps.delete(idx);
+      else f.expandedGaps.add(idx);
       rerenderFile(f.id);
+      applyHighlight();
     }
     return;
   }
 
-  // Fully expand / collapse back to hunks.
+  // Fully expand / collapse back to hunks. Collapsing resets all gap
+  // expansions so "Collapse to hunks" genuinely restores the hunk view.
   const fullBtn = e.target.closest(".file-toggle-full");
   if (fullBtn) {
     e.stopPropagation();
@@ -694,9 +739,22 @@ diffEl.addEventListener("click", (e) => {
     if (f) {
       f.fullyExpanded = !f.fullyExpanded;
       if (f.fullyExpanded) f.collapsed = false;
+      else f.expandedGaps.clear();
       rerenderFile(f.id);
+      applyHighlight();
     }
     return;
+  }
+
+  // Click on a line-number gutter → select that line (Shift to extend range).
+  const lnEl = e.target.closest(".ln");
+  if (lnEl) {
+    const lineEl = lnEl.closest(".line[data-new-line], .line[data-old-line]");
+    if (lineEl) {
+      e.stopPropagation();
+      handleLineSelect(lineEl, e.shiftKey);
+      return;
+    }
   }
 
   // Header click → toggle collapse for the card.
@@ -709,6 +767,99 @@ diffEl.addEventListener("click", (e) => {
   }
 });
 
+// ---------- line selection ----------
+
+function handleLineSelect(lineEl, extend) {
+  const fileEl = lineEl.closest(".file");
+  if (!fileEl) return;
+  const f = state.files.get(fileEl.id);
+  if (!f) return;
+  const newLn = lineEl.dataset.newLine ? parseInt(lineEl.dataset.newLine, 10) : null;
+  // Selection anchors on the new-side line number. Deletion-only lines don't
+  // have one, so clicking them clears the selection.
+  if (newLn == null) {
+    state.selection = null;
+    state.selectedFile = null;
+  } else if (extend && state.selection && state.selectedFile === f.path) {
+    const a = Math.min(state.selection.a, newLn);
+    const b = Math.max(state.selection.b, newLn);
+    state.selection = { a, b };
+  } else {
+    state.selectedFile = f.path;
+    state.selection = { a: newLn, b: newLn };
+  }
+  applyHighlight();
+  writeHash();
+}
+
+function applyHighlight() {
+  diffEl.querySelectorAll(".line.selected").forEach((el) => el.classList.remove("selected"));
+  if (!state.selection || !state.selectedFile) return;
+  const f = [...state.files.values()].find((x) => x.path === state.selectedFile);
+  if (!f) return;
+  const fileEl = document.getElementById(f.id);
+  if (!fileEl) return;
+  const { a, b } = state.selection;
+  fileEl.querySelectorAll(".line[data-new-line]").forEach((el) => {
+    const n = parseInt(el.dataset.newLine, 10);
+    if (n >= a && n <= b) el.classList.add("selected");
+  });
+}
+
+function applyFileNavigation() {
+  const f = [...state.files.values()].find((x) => x.path === state.selectedFile);
+  if (!f) return;
+  if (state.selection) {
+    expandGapsCoveringRange(f, state.selection);
+    rerenderFile(f.id);
+  }
+  const el = document.getElementById(f.id);
+  if (!el) return;
+  if (el.classList.contains("collapsed")) {
+    el.classList.remove("collapsed");
+    f.collapsed = false;
+  }
+  if (state.selection) {
+    applyHighlight();
+    const target = el.querySelector(`.line[data-new-line="${state.selection.a}"]`);
+    if (target) { target.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+  }
+  el.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+// Expand any gaps that fall within the selected line range so the highlighted
+// lines are actually visible when navigating from a shared URL.
+function expandGapsCoveringRange(f, range) {
+  if (!f.hunks || !f.hunks.length) return;
+  // Iterate gaps (before each hunk and trailing) and mark those that intersect.
+  const rightLines = f.rightText.split("\n");
+  const leftMax = trimTrailingEmpty(f.leftText.split("\n")).length;
+  const rightMax = trimTrailingEmpty(rightLines).length;
+  for (let i = 0; i < f.hunks.length; i++) {
+    const h = f.hunks[i];
+    const prev = f.hunks[i - 1];
+    const gapNewStart = prev ? prev.newStart + prev.newLines : 1;
+    const gapLen = Math.min(
+      h.oldStart - (prev ? prev.oldStart + prev.oldLines : 1),
+      h.newStart - gapNewStart,
+    );
+    if (gapLen > 0) {
+      const gapEnd = gapNewStart + gapLen - 1;
+      if (range.b >= gapNewStart && range.a <= gapEnd) f.expandedGaps.add(i);
+    }
+  }
+  const last = f.hunks[f.hunks.length - 1];
+  const tailNewStart = last.newStart + last.newLines;
+  const tailLen = Math.min(
+    leftMax - (last.oldStart + last.oldLines) + 1,
+    rightMax - tailNewStart + 1,
+  );
+  if (tailLen > 0) {
+    const tailEnd = tailNewStart + tailLen - 1;
+    if (range.b >= tailNewStart && range.a <= tailEnd) f.expandedGaps.add(f.hunks.length);
+  }
+}
+
 sidebarEl.addEventListener("click", (e) => {
   const filterBtn = e.target.closest(".filter-btn");
   if (filterBtn) {
@@ -720,14 +871,20 @@ sidebarEl.addEventListener("click", (e) => {
   const fileItem = e.target.closest(".tree-file");
   if (fileItem) {
     const id = fileItem.dataset.file;
+    const f = state.files.get(id);
+    if (!f) return;
     const el = document.getElementById(id);
     if (!el) return;
-    // Auto-expand the target so the user actually sees content after scroll.
     if (el.classList.contains("collapsed")) {
       el.classList.remove("collapsed");
-      const f = state.files.get(id);
-      if (f) f.collapsed = false;
+      f.collapsed = false;
     }
+    // Selecting a file from the sidebar clears any active line selection and
+    // records the file in the URL.
+    state.selectedFile = f.path;
+    state.selection = null;
+    applyHighlight();
+    writeHash();
     el.scrollIntoView({ block: "start", behavior: "smooth" });
     sidebarEl.querySelectorAll(".tree-file.active").forEach((e) => e.classList.remove("active"));
     fileItem.classList.add("active");
@@ -802,17 +959,27 @@ function escapeHtml(s) {
 window.addEventListener("hashchange", () => {
   const parsed = parseHash();
   if (!parsed) return;
-  if (state.crate && state.crate.name === parsed.name) {
-    if (parsed.left && parsed.left !== state.left) { state.left = parsed.left; leftSel.value = parsed.left; }
-    if (parsed.right && parsed.right !== state.right) { state.right = parsed.right; rightSel.value = parsed.right; }
-    loadDiff();
+  const sameCrate = state.crate && state.crate.name === parsed.name;
+  const sameVersions = sameCrate && parsed.left === state.left && parsed.right === state.right;
+  if (sameVersions) {
+    // Just navigation: update file + range without reloading tarballs.
+    state.selectedFile = parsed.file;
+    state.selection = parsed.range;
+    if (parsed.file) applyFileNavigation();
+    else applyHighlight();
+  } else if (sameCrate) {
+    if (parsed.left) { state.left = parsed.left; leftSel.value = parsed.left; }
+    if (parsed.right) { state.right = parsed.right; rightSel.value = parsed.right; }
+    state.selectedFile = parsed.file;
+    state.selection = parsed.range;
+    loadDiff().then(() => { if (parsed.file) applyFileNavigation(); });
   } else {
-    selectCrate(parsed.name, parsed.left, parsed.right);
+    selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
   }
 });
 
 (async function init() {
   const parsed = parseHash();
-  if (parsed?.name) await selectCrate(parsed.name, parsed.left, parsed.right);
+  if (parsed?.name) await selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
   searchInput.focus();
 })();

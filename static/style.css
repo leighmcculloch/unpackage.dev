@@ -119,7 +119,12 @@ a:hover { text-decoration: underline; }
 header {
   padding-top: 1.25rem;
   padding-bottom: 0.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
 }
+
+header .header-main { flex: 1; min-width: 0; }
 
 h1 {
   margin: 0;
@@ -710,6 +715,24 @@ select option.yanked {
   font-size: 0.8rem;
   opacity: 0.85;
   margin-left: 0.25rem;
+}
+
+/* Line-number gutter is clickable on diff lines to select them. Hunk/gap
+   rows use the gutter for their own controls, so exclude those. */
+.line[data-new-line] .ln,
+.line[data-old-line] .ln { cursor: pointer; }
+.line[data-new-line] .ln:hover,
+.line[data-old-line] .ln:hover { color: var(--accent); }
+
+/* Selected-line highlight, layered after add/del so it overrides them. */
+.line.selected .ln      { background: #fff3a3; color: #5a3a00; font-weight: 600; }
+.line.selected .lc      { background: rgba(255, 235, 59, 0.16); }
+.line.selected.add .lc  { background: color-mix(in srgb, rgba(255, 235, 59, 0.3), var(--add-bg)); }
+.line.selected.del .lc  { background: color-mix(in srgb, rgba(255, 235, 59, 0.3), var(--del-bg)); }
+
+@media (prefers-color-scheme: dark) {
+  .line.selected .ln { background: rgba(210, 160, 40, 0.45); color: #ffd787; }
+  .line.selected .lc { background: rgba(210, 160, 40, 0.18); }
 }
 
 .line.note .lc {
