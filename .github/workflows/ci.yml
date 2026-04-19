@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type check
+        run: deno check main.ts
+
+      - name: Format check
+        run: deno fmt --check main.ts
+
+      - name: Lint
+        run: deno lint main.ts
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          deno run --allow-net --allow-read --allow-env main.ts &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID 2>/dev/null || true" EXIT
+
+          # Wait for the server to come up.
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8000/ >/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+
+          echo "::group::static assets"
+          curl -sf http://localhost:8000/              > /dev/null
+          curl -sf http://localhost:8000/app.js        > /dev/null
+          curl -sf http://localhost:8000/style.css     > /dev/null
+          echo "::endgroup::"
+
+          echo "::group::crates.io proxy"
+          curl -sf "http://localhost:8000/api/search?q=serde&per_page=1" \
+            | grep -q '"crates"'
+          curl -sf "http://localhost:8000/api/crate/serde" \
+            | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/download/serde/1.0.0" \
+            | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
