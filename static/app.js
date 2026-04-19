@@ -417,7 +417,10 @@ function renderAll() {
 }
 
 function applyFilterToDiff() {
-  diffPaneEl.classList.toggle("hide-unchanged", state.filter === "changed");
+  const hide = state.filter === "changed";
+  diffEl.querySelectorAll('.file[data-status="unchanged"]').forEach((el) => {
+    el.style.display = hide ? "none" : "";
+  });
 }
 
 function renderStats({ total, added, removed, modified, unchanged }) {
