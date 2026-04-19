@@ -494,31 +494,40 @@ function renderDiffBody(f) {
   const rightMax = trimTrailingEmpty(rightLines).length;
   const out = [];
 
-  // Gap at top of file (before first hunk).
-  const first = hunks[0];
-  const preLen = Math.min(first.oldStart - 1, first.newStart - 1);
-  if (preLen > 0) {
-    out.push(renderGap(f, -1, 1, 1, preLen, rightLines));
-  }
-
+  // Gap indexing: gap[i] is the gap BEFORE hunks[i]. gap[hunks.length] is the
+  // trailing gap after the last hunk.
   for (let i = 0; i < hunks.length; i++) {
     const h = hunks[i];
-    out.push(renderHunk(h));
+    const prev = hunks[i - 1];
+    const gapOldStart = prev ? prev.oldStart + prev.oldLines : 1;
+    const gapNewStart = prev ? prev.newStart + prev.newLines : 1;
+    const gapLen = Math.min(h.oldStart - gapOldStart, h.newStart - gapNewStart);
 
-    const hunkEndOld = h.oldStart + h.oldLines; // next line after hunk
-    const hunkEndNew = h.newStart + h.newLines;
-    const next = hunks[i + 1];
-
-    let gapLen;
-    if (next) {
-      gapLen = Math.min(next.oldStart - hunkEndOld, next.newStart - hunkEndNew);
+    if (gapLen > 0 && f.expandedGaps.has(i)) {
+      out.push(renderGapLines(gapOldStart, gapNewStart, gapLen, rightLines));
+      out.push(renderHunk(h));
+    } else if (gapLen > 0) {
+      // Merge the gap expander into this hunk's header row.
+      out.push(renderHunk(h, { fileId: f.id, gapIdx: i, gapLen }));
     } else {
-      gapLen = Math.min(leftMax - hunkEndOld + 1, rightMax - hunkEndNew + 1);
-    }
-    if (gapLen > 0) {
-      out.push(renderGap(f, i, hunkEndOld, hunkEndNew, gapLen, rightLines));
+      out.push(renderHunk(h));
     }
   }
+
+  // Trailing gap (after last hunk) has no following hunk — render standalone.
+  const last = hunks[hunks.length - 1];
+  const tailOldStart = last.oldStart + last.oldLines;
+  const tailNewStart = last.newStart + last.newLines;
+  const tailLen = Math.min(leftMax - tailOldStart + 1, rightMax - tailNewStart + 1);
+  if (tailLen > 0) {
+    const tailIdx = hunks.length;
+    if (f.expandedGaps.has(tailIdx)) {
+      out.push(renderGapLines(tailOldStart, tailNewStart, tailLen, rightLines));
+    } else {
+      out.push(renderStandaloneGap(f.id, tailIdx, tailLen));
+    }
+  }
+
   return out.join("");
 }
 
@@ -528,11 +537,24 @@ function trimTrailingEmpty(arr) {
   return arr;
 }
 
-function renderHunk(h) {
+function renderHunk(h, expand) {
   const out = [];
-  out.push(
-    `<div class="line hunk"><span class="ln">@@</span><span class="lc">@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@</span></div>`,
-  );
+  const title = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
+  if (expand) {
+    const noun = expand.gapLen === 1 ? "line" : "lines";
+    out.push(
+      `<div class="line hunk expandable" data-file="${expand.fileId}" data-gap="${expand.gapIdx}" title="Expand ${expand.gapLen} unchanged ${noun}">` +
+        `<span class="ln">↕ @@</span>` +
+        `<span class="lc">${escapeHtml(title)}` +
+          ` <span class="gap-label">· Show ${expand.gapLen} unchanged ${noun}</span>` +
+        `</span>` +
+      `</div>`,
+    );
+  } else {
+    out.push(
+      `<div class="line hunk"><span class="ln">@@</span><span class="lc">${escapeHtml(title)}</span></div>`,
+    );
+  }
   let oldNo = h.oldStart, newNo = h.newStart;
   for (const line of h.lines) {
     if (line.startsWith("\\")) {
@@ -554,19 +576,20 @@ function renderHunk(h) {
   return out.join("");
 }
 
-function renderGap(f, gapIdx, oldStart, newStart, length, rightLines) {
-  if (f.expandedGaps.has(gapIdx)) {
-    const out = [];
-    for (let i = 0; i < length; i++) {
-      const oldNo = oldStart + i;
-      const newNo = newStart + i;
-      const content = rightLines[newNo - 1] ?? "";
-      out.push(`<div class="line"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
-    }
-    return out.join("");
+function renderGapLines(oldStart, newStart, length, rightLines) {
+  const out = [];
+  for (let i = 0; i < length; i++) {
+    const oldNo = oldStart + i;
+    const newNo = newStart + i;
+    const content = rightLines[newNo - 1] ?? "";
+    out.push(`<div class="line"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
   }
+  return out.join("");
+}
+
+function renderStandaloneGap(fileId, gapIdx, length) {
   const noun = length === 1 ? "line" : "lines";
-  return `<div class="line gap" data-file="${f.id}" data-gap="${gapIdx}"><span class="ln">↕</span><span class="lc">Show ${length} unchanged ${noun}</span></div>`;
+  return `<div class="line gap" data-file="${fileId}" data-gap="${gapIdx}"><span class="ln">↕</span><span class="lc">Show ${length} unchanged ${noun}</span></div>`;
 }
 
 // ---------- sidebar ----------
@@ -652,8 +675,8 @@ function rerenderFile(id) {
 }
 
 diffEl.addEventListener("click", (e) => {
-  // Gap expander — most specific ancestor check first.
-  const gap = e.target.closest(".line.gap");
+  // Gap expander — both standalone gap rows and merged hunk-header rows.
+  const gap = e.target.closest(".line.gap, .line.hunk.expandable");
   if (gap) {
     const f = state.files.get(gap.dataset.file);
     if (f) {

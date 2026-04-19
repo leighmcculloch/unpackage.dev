@@ -699,6 +699,19 @@ select option.yanked {
   padding: 0.3rem 0.85rem;
 }
 
+.line.hunk.expandable {
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.line.hunk.expandable:hover { filter: brightness(1.08); }
+.line.hunk.expandable .gap-label {
+  font-family: var(--sans);
+  font-weight: 400;
+  font-size: 0.8rem;
+  opacity: 0.85;
+  margin-left: 0.25rem;
+}
+
 .line.note .lc {
   color: var(--muted);
   font-style: italic;
