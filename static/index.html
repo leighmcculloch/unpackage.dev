@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>crates-diff</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header>
+  <h1>crates-diff</h1>
+  <p class="tag">Compare any two versions of a <a href="https://crates.io">crates.io</a> crate as a folder diff.</p>
+</header>
+
+<section class="search">
+  <input id="search" type="text" placeholder="Search crates.io&hellip;" autocomplete="off" spellcheck="false" />
+  <ul id="results" hidden></ul>
+</section>
+
+<section class="compare" hidden id="compare">
+  <div class="crate-title">
+    <span id="crate-name"></span>
+    <a id="crate-link" target="_blank" rel="noopener">crates.io &rarr;</a>
+  </div>
+  <div class="versions">
+    <label class="ver left">
+      <span>left (old)</span>
+      <select id="left-version"></select>
+    </label>
+    <div class="arrow">&rarr;</div>
+    <label class="ver right">
+      <span>right (new)</span>
+      <select id="right-version"></select>
+    </label>
+  </div>
+  <div class="stats" id="stats"></div>
+</section>
+
+<section class="diff" id="diff"></section>
+
+<footer>
+  <p>Everything runs client-side after a tiny proxy for crates.io. Tarballs are cached in your browser.</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
