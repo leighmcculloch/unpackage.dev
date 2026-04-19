@@ -432,9 +432,6 @@ select option.yanked {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
-  position: sticky;
-  top: 2.6rem; /* below toolbar */
-  z-index: 2;
 }
 
 .file.collapsed .file-header { border-bottom: none; }
