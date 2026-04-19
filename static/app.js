@@ -23,6 +23,7 @@ const filterTabsEl   = $("filter-tabs");
 const diffPaneEl     = $("diff-pane");
 const topbarEl       = document.querySelector(".topbar");
 const topbarToggleBtn = $("topbar-toggle");
+const compactSummaryEl = $("compact-summary");
 
 // --- state
 const state = {
@@ -35,7 +36,7 @@ const state = {
   order: [],           // file ids in render order
   filter: "changed",   // "changed" | "all"
   selectedFile: null,  // file path persisted in URL
-  selection: null,     // { a, b } — new-side line numbers (inclusive)
+  selection: null,     // { start: {side, line}, end: {side, line} }
 };
 
 // Paths that default to collapsed — noisy but frequently regenerated files.
@@ -50,10 +51,14 @@ function writeHash() {
   if (state.selectedFile) {
     h += `/${state.selectedFile}`;
     if (state.selection) {
-      const prefix = state.selection.side === "old" ? "R" : "L";
-      h += state.selection.a === state.selection.b
-        ? `?${prefix}${state.selection.a}`
-        : `?${prefix}${state.selection.a}-${prefix}${state.selection.b}`;
+      const { start, end } = state.selection;
+      const sp = start.side === "old" ? "R" : "L";
+      const ep = end.side === "old" ? "R" : "L";
+      if (start.side === end.side && start.line === end.line) {
+        h += `?${sp}${start.line}`;
+      } else {
+        h += `?${sp}${start.line}-${ep}${end.line}`;
+      }
     }
   }
   if (location.hash.slice(1) !== h) history.replaceState(null, "", `#${h}`);
@@ -89,14 +94,15 @@ function parseHash() {
 }
 
 function parseLineRange(s) {
-  // Accepts L<n> / R<n> / L<a>-L<b> / R<a>-R<b>. Both ends of a range must
-  // use the same side prefix.
-  const m = s.match(/^([LR])(\d+)(?:-\1(\d+))?$/);
+  // Accepts L<n>, R<n>, or mixed-side ranges like L10-L20, R5-R15, L10-R25.
+  const m = s.match(/^([LR])(\d+)(?:-([LR])(\d+))?$/);
   if (!m) return null;
-  const side = m[1] === "R" ? "old" : "new";
-  const a = parseInt(m[2], 10);
-  const b = m[3] ? parseInt(m[3], 10) : a;
-  return { side, a: Math.min(a, b), b: Math.max(a, b) };
+  const sideOf = (c) => (c === "R" ? "old" : "new");
+  const start = { side: sideOf(m[1]), line: parseInt(m[2], 10) };
+  const end = m[3]
+    ? { side: sideOf(m[3]), line: parseInt(m[4], 10) }
+    : { ...start };
+  return { start, end };
 }
 
 // ---------- search ----------
@@ -225,13 +231,27 @@ function paintCompare() {
   rightSel.innerHTML = opts;
   leftSel.value = state.left;
   rightSel.value = state.right;
+  updateCompactSummary();
+}
+
+function updateCompactSummary() {
+  if (!compactSummaryEl) return;
+  if (state.crate && state.left && state.right) {
+    compactSummaryEl.innerHTML =
+      `<span class="cs-name">${escapeHtml(state.crate.name)}</span>` +
+      `<span class="cs-ver">${escapeHtml(state.left)}</span>` +
+      `<span class="cs-arrow">→</span>` +
+      `<span class="cs-ver">${escapeHtml(state.right)}</span>`;
+  } else {
+    compactSummaryEl.innerHTML = "";
+  }
 }
 
 leftSel.addEventListener("change", async () => {
-  state.left = leftSel.value; writeHash(); await loadDiff();
+  state.left = leftSel.value; updateCompactSummary(); writeHash(); await loadDiff();
 });
 rightSel.addEventListener("change", async () => {
-  state.right = rightSel.value; writeHash(); await loadDiff();
+  state.right = rightSel.value; updateCompactSummary(); writeHash(); await loadDiff();
 });
 
 // ---------- tarball fetch + parse (cached) ----------
@@ -791,18 +811,22 @@ function handleLineSelect(lineEl, side, anchor, extend) {
   if (!fileEl) return;
   const f = state.files.get(fileEl.id);
   if (!f) return;
+  const endpoint = { side, line: anchor };
   const sameFile = state.selectedFile === f.path;
-  const sameSide = state.selection && state.selection.side === side;
-  if (extend && sameFile && sameSide) {
-    const a = Math.min(state.selection.a, anchor);
-    const b = Math.max(state.selection.b, anchor);
-    state.selection = { side, a, b };
+  if (extend && sameFile && state.selection) {
+    // Keep the anchor (start) fixed, move head (end) to the clicked endpoint.
+    state.selection = { start: state.selection.start, end: endpoint };
   } else {
     state.selectedFile = f.path;
-    state.selection = { side, a: anchor, b: anchor };
+    state.selection = { start: endpoint, end: endpoint };
   }
   applyHighlight();
   writeHash();
+}
+
+function findLineByEndpoint(fileEl, endpoint) {
+  const attr = endpoint.side === "old" ? "data-old-line" : "data-new-line";
+  return fileEl.querySelector(`.line[${attr}="${endpoint.line}"]`);
 }
 
 function applyHighlight() {
@@ -812,20 +836,49 @@ function applyHighlight() {
   if (!f) return;
   const fileEl = document.getElementById(f.id);
   if (!fileEl) return;
-  const { side, a, b } = state.selection;
-  const dataKey = side === "old" ? "oldLine" : "newLine";
-  const attr = side === "old" ? "data-old-line" : "data-new-line";
-  fileEl.querySelectorAll(`.line[${attr}]`).forEach((el) => {
-    const n = parseInt(el.dataset[dataKey], 10);
-    if (n >= a && n <= b) el.classList.add("selected");
-  });
+  const { start, end } = state.selection;
+  const startEl = findLineByEndpoint(fileEl, start);
+  const endEl = findLineByEndpoint(fileEl, end);
+  if (!startEl && !endEl) return;
+  if (!startEl || !endEl) {
+    // One endpoint isn't rendered (inside a collapsed gap). Highlight only
+    // what we can find rather than nothing.
+    (startEl || endEl).classList.add("selected");
+    return;
+  }
+  if (startEl === endEl) {
+    startEl.classList.add("selected");
+    return;
+  }
+  const pos = startEl.compareDocumentPosition(endEl);
+  const [first, last] = pos & Node.DOCUMENT_POSITION_FOLLOWING
+    ? [startEl, endEl]
+    : [endEl, startEl];
+  let el = first;
+  while (el) {
+    if (el.classList?.contains("line") && (el.dataset.newLine || el.dataset.oldLine)) {
+      el.classList.add("selected");
+    }
+    if (el === last) break;
+    el = el.nextElementSibling;
+  }
 }
 
 function applyFileNavigation() {
   const f = [...state.files.values()].find((x) => x.path === state.selectedFile);
   if (!f) return;
   if (state.selection) {
-    expandGapsCoveringRange(f, state.selection);
+    const { start, end } = state.selection;
+    if (start.side === end.side) {
+      expandGapsCoveringRange(f, {
+        side: start.side,
+        a: Math.min(start.line, end.line),
+        b: Math.max(start.line, end.line),
+      });
+    } else {
+      // Mixed-side range — fully expand the file so both endpoints render.
+      f.fullyExpanded = true;
+    }
     rerenderFile(f.id);
   }
   const el = document.getElementById(f.id);
@@ -836,9 +889,8 @@ function applyFileNavigation() {
   }
   if (state.selection) {
     applyHighlight();
-    const { side, a } = state.selection;
-    const attr = side === "old" ? "data-old-line" : "data-new-line";
-    const target = el.querySelector(`.line[${attr}="${a}"]`);
+    const target = findLineByEndpoint(el, state.selection.start)
+                || findLineByEndpoint(el, state.selection.end);
     if (target) { target.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
   }
   el.scrollIntoView({ block: "start", behavior: "smooth" });

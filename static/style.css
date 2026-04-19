@@ -119,12 +119,7 @@ a:hover { text-decoration: underline; }
 header {
   padding-top: 1.25rem;
   padding-bottom: 0.25rem;
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
 }
-
-header .header-main { flex: 1; min-width: 0; }
 
 h1 {
   margin: 0;
@@ -391,28 +386,52 @@ select option.yanked {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
+  min-width: 0;
 }
 .toolbar-spacer { flex: 1; }
 
-/* Collapsed top bar — hide the bulk of the content but leave a thin strip
-   containing the toggle button so users can restore it. */
-.topbar.collapsed .header-main,
+/* Site name + compact crate summary live in the toolbar but only display
+   when the top bar is collapsed so the toolbar becomes a self-contained
+   single-row header strip. */
+.toolbar .site-name,
+.toolbar .compact-summary { display: none; }
+
+.toolbar .site-name { align-items: center; gap: 0.45rem; font-weight: 700; }
+.toolbar .site-name .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  flex: none;
+}
+
+.toolbar .compact-summary {
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toolbar .compact-summary .cs-name   { color: var(--fg); font-weight: 600; }
+.toolbar .compact-summary .cs-arrow  { opacity: 0.6; }
+
+/* Collapsed top bar — hide the bulk of the content. Keep the toolbar only,
+   now also showing site name + crate summary on the left. */
+.topbar.collapsed header,
 .topbar.collapsed .search,
 .topbar.collapsed .compare-wrap { display: none; }
 
-.topbar.collapsed header {
-  padding-top: 0.3rem;
-  padding-bottom: 0.3rem;
-  justify-content: flex-end;
-}
-
 .topbar.collapsed .toolbar {
-  padding-top: 0.3rem;
-  padding-bottom: 0.3rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
 }
+.topbar.collapsed .toolbar .site-name { display: inline-flex; }
+.topbar.collapsed .toolbar .compact-summary:not(:empty) { display: inline-flex; }
 
 #topbar-toggle .chev-up { transition: transform 150ms ease; }
 .topbar.collapsed #topbar-toggle .chev-up { transform: rotate(180deg); }
