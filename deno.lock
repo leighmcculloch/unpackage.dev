@@ -62,6 +62,9 @@
       "integrity": "7859f3d9deed83cf4b41f19223d4a67661b3d3819e9fc117698f493bf5992140"
     }
   },
+  "remote": {
+    "https://deno.land/x/pako@v2.0.3/pako.js": "5c4fb94476dea571ba33a6074b4ea25a0508b347c6f453110202ddf4ddbc6991"
+  },
   "workspace": {
     "dependencies": [
       "jsr:@std/http@1"
