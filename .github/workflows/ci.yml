@@ -47,10 +47,19 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::crates.io proxy"
-          curl -sf "http://localhost:8000/api/search?q=serde&per_page=1" \
+          curl -sf "http://localhost:8000/api/registry/crates.io/search?q=serde&per_page=1" \
             | grep -q '"crates"'
-          curl -sf "http://localhost:8000/api/crate/serde" \
+          curl -sf "http://localhost:8000/api/registry/crates.io/package/serde" \
             | grep -q '"versions"'
-          curl -sfI "http://localhost:8000/api/download/serde/1.0.0" \
+          curl -sfI "http://localhost:8000/api/registry/crates.io/download/serde/1.0.0" \
+            | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::npm proxy"
+          curl -sf "http://localhost:8000/api/registry/npmjs.com/search?q=express&per_page=1" \
+            | grep -q '"crates"'
+          curl -sf "http://localhost:8000/api/registry/npmjs.com/package/express" \
+            | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/npmjs.com/download/express/4.18.2" \
             | grep -qi '^HTTP/.* 200'
           echo "::endgroup::"

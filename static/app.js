@@ -29,6 +29,7 @@ const topbarEl       = document.querySelector(".topbar");
 const topbarToggleBtn = $("topbar-toggle");
 const compactSummaryEl = $("compact-summary");
 const themeToggleBtn = $("theme-toggle");
+const registrySel    = $("registry-sel");
 
 // --- state
 const state = {
@@ -43,7 +44,36 @@ const state = {
   selectedFile: null,  // file path persisted in URL
   selection: null,     // { start: {side, line}, end: {side, line} }
   mode: "compare",     // "compare" | "view" — tab-driven, independent of left/right equality
+  registry: "crates.io", // "crates.io" | "npmjs.com" | ...
 };
+
+const KNOWN_REGISTRIES = new Set(["crates.io", "npmjs.com"]);
+
+function apiSearchUrl(registry, q, per) {
+  return `/api/registry/${registry}/search?q=${encodeURIComponent(q)}&per_page=${encodeURIComponent(per)}`;
+}
+function apiPackageUrl(registry, name) {
+  // Names may contain "/" (scoped npm packages) — leave slashes literal so
+  // they become part of the path, matching the server's routing.
+  return `/api/registry/${registry}/package/${name}`;
+}
+function apiDownloadUrl(registry, name, version) {
+  return `/api/registry/${registry}/download/${name}/${encodeURIComponent(version)}`;
+}
+
+function archiveExt(registry) {
+  if (registry === "npmjs.com") return ".tgz";
+  return ".crate";
+}
+
+function safeFilename(name) {
+  return name.replace(/^@/, "").replace(/\//g, "-");
+}
+
+function registryPackageUrl(registry, name) {
+  if (registry === "npmjs.com") return `https://www.npmjs.com/package/${name}`;
+  return `https://crates.io/crates/${name}`;
+}
 
 // Paths that default to collapsed — noisy but frequently regenerated files.
 const DEFAULT_COLLAPSED = new Set(["Cargo.lock"]);
@@ -153,9 +183,9 @@ function lineHtml(f, side, lineNum, fallback) {
 
 function writeHash() {
   if (!state.crate) return;
-  let h = state.crate.name;
+  let h = `${state.registry}/${state.crate.name}`;
   if (state.left && state.right) {
-    // Single-version view collapses to "#crate/ver".
+    // Single-version view collapses to ".../ver".
     h += state.left === state.right
       ? `/${state.left}`
       : `/${state.left}...${state.right}`;
@@ -179,36 +209,68 @@ function writeHash() {
 function parseHash() {
   const raw = decodeURIComponent(location.hash.slice(1));
   if (!raw) return null;
-  const slash = raw.indexOf("/");
-  if (slash < 0) return { name: raw, left: null, right: null, file: null, range: null };
-  const name = raw.slice(0, slash);
-  const rest = raw.slice(slash + 1);
 
-  // The version portion runs up to the next slash. "old...new" means compare;
-  // a plain version is a single-version view (old == new).
-  const nextSlash = rest.indexOf("/");
-  const verPart = nextSlash < 0 ? rest : rest.slice(0, nextSlash);
-  const afterVer = nextSlash < 0 ? "" : rest.slice(nextSlash + 1);
-
-  let left, right;
-  const sep = verPart.indexOf("...");
-  if (sep < 0) {
-    left = right = verPart;
+  // Strip the registry prefix; default to crates.io for backward compatibility
+  // with URLs saved before the registry segment existed.
+  const firstSlash = raw.indexOf("/");
+  const firstSegment = firstSlash < 0 ? raw : raw.slice(0, firstSlash);
+  let registry, rest;
+  if (KNOWN_REGISTRIES.has(firstSegment)) {
+    registry = firstSegment;
+    rest = firstSlash < 0 ? "" : raw.slice(firstSlash + 1);
   } else {
-    left = verPart.slice(0, sep);
-    right = verPart.slice(sep + 3);
+    registry = "crates.io";
+    rest = raw;
   }
+  if (!rest) return { registry, name: null, left: null, right: null, file: null, range: null };
 
-  let file = null, range = null;
-  if (afterVer) {
-    const q = afterVer.indexOf("?");
-    if (q < 0) file = afterVer;
-    else {
-      file = afterVer.slice(0, q);
-      range = parseLineRange(afterVer.slice(q + 1));
+  // Name — may be a scoped npm package ("@scope/name") that contains a slash.
+  let name, afterName;
+  if (rest.startsWith("@")) {
+    const s1 = rest.indexOf("/");
+    const s2 = s1 >= 0 ? rest.indexOf("/", s1 + 1) : -1;
+    if (s2 < 0) {
+      name = rest;
+      afterName = "";
+    } else {
+      name = rest.slice(0, s2);
+      afterName = rest.slice(s2 + 1);
+    }
+  } else {
+    const s1 = rest.indexOf("/");
+    if (s1 < 0) {
+      name = rest;
+      afterName = "";
+    } else {
+      name = rest.slice(0, s1);
+      afterName = rest.slice(s1 + 1);
     }
   }
-  return { name, left, right, file, range };
+
+  // Version portion — "old...new" or single "ver"; optionally followed by a
+  // file path and an optional "?L10[-L20]" / "?R10[-R20]" fragment.
+  let left = null, right = null, file = null, range = null;
+  if (afterName) {
+    const vs = afterName.indexOf("/");
+    const verPart = vs < 0 ? afterName : afterName.slice(0, vs);
+    const afterVer = vs < 0 ? "" : afterName.slice(vs + 1);
+    const sep = verPart.indexOf("...");
+    if (sep < 0) left = right = verPart;
+    else {
+      left = verPart.slice(0, sep);
+      right = verPart.slice(sep + 3);
+    }
+    if (afterVer) {
+      const q = afterVer.indexOf("?");
+      if (q < 0) file = afterVer;
+      else {
+        file = afterVer.slice(0, q);
+        range = parseLineRange(afterVer.slice(q + 1));
+      }
+    }
+  }
+
+  return { registry, name, left, right, file, range };
 }
 
 function parseLineRange(s) {
@@ -262,7 +324,7 @@ async function runSearch() {
   const q = searchInput.value.trim();
   if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ""; return; }
   try {
-    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&per_page=10`);
+    const res = await fetch(apiSearchUrl(state.registry, q, "10"));
     const data = await res.json();
     renderResults(data.crates || []);
   } catch (err) { console.error(err); }
@@ -311,8 +373,8 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null, pr
   state.selection = preferredRange;
 
   try {
-    const res = await fetch(`/api/crate/${encodeURIComponent(name)}`);
-    if (!res.ok) throw new Error(`crate not found: ${name}`);
+    const res = await fetch(apiPackageUrl(state.registry, name));
+    if (!res.ok) throw new Error(`package not found: ${name}`);
     const data = await res.json();
     state.crate = data.crate;
     state.versions = data.versions || [];
@@ -341,7 +403,8 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null, pr
 function paintCompare() {
   compareEl.hidden = false;
   crateNameEl.textContent = state.crate.name;
-  crateLinkEl.href = `https://crates.io/crates/${state.crate.name}`;
+  crateLinkEl.href = registryPackageUrl(state.registry, state.crate.name);
+  crateLinkEl.textContent = `${state.registry} →`;
 
   const opts = state.versions.map((v) => {
     const date = typeof v.created_at === "string" ? v.created_at.slice(0, 10) : "";
@@ -456,7 +519,7 @@ compareTabsEl.addEventListener("click", async (e) => {
 // ---------- tarball fetch + parse (cached) ----------
 
 async function fetchCrateFiles(name, version) {
-  const url = `/api/download/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
+  const url = apiDownloadUrl(state.registry, name, version);
   let response;
   let cache = null;
   try { cache = await caches.open("crates-diff-v1"); response = await cache.match(url); }
@@ -1235,7 +1298,7 @@ collapseAllBtn.addEventListener("click", () => {
 });
 
 async function downloadVersion(name, version) {
-  const url = `/api/download/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
+  const url = apiDownloadUrl(state.registry, name, version);
   let response;
   try {
     const cache = await caches.open("crates-diff-v1");
@@ -1247,7 +1310,7 @@ async function downloadVersion(name, version) {
   const blobUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = blobUrl;
-  a.download = `${name}-${version}.crate`;
+  a.download = `${safeFilename(name)}-${version}${archiveExt(state.registry)}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1339,13 +1402,28 @@ function escapeHtml(s) {
 
 // ---------- bootstrap ----------
 
+function syncRegistryUI() {
+  registrySel.value = state.registry;
+  searchInput.placeholder = `Search ${state.registry}\u2026`;
+}
+
+registrySel.addEventListener("change", () => {
+  state.registry = registrySel.value;
+  syncRegistryUI();
+  // Drop stale results but don't wipe anything else; the user hasn't asked
+  // for a new package yet.
+  resultsEl.hidden = true;
+  resultsEl.innerHTML = "";
+});
+
 window.addEventListener("hashchange", () => {
   const parsed = parseHash();
   if (!parsed) return;
-  const sameCrate = state.crate && state.crate.name === parsed.name;
+  const sameCrate = state.crate
+    && state.registry === parsed.registry
+    && state.crate.name === parsed.name;
   const sameVersions = sameCrate && parsed.left === state.left && parsed.right === state.right;
   if (sameVersions) {
-    // Just navigation: update file + range without reloading tarballs.
     state.selectedFile = parsed.file;
     state.selection = parsed.range;
     if (parsed.file) applyFileNavigation();
@@ -1359,12 +1437,22 @@ window.addEventListener("hashchange", () => {
     applyMode();
     loadDiff().then(() => { if (parsed.file) applyFileNavigation(); });
   } else {
-    selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
+    state.registry = parsed.registry;
+    syncRegistryUI();
+    if (parsed.name) {
+      selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
+    }
   }
 });
 
 (async function init() {
   const parsed = parseHash();
-  if (parsed?.name) await selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
+  if (parsed) {
+    state.registry = parsed.registry;
+    syncRegistryUI();
+    if (parsed.name) await selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
+  } else {
+    syncRegistryUI();
+  }
   searchInput.focus();
 })();

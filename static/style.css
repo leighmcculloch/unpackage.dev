@@ -274,9 +274,33 @@ h1 .dot {
   position: relative;
 }
 
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
 .search-box {
   position: relative;
+  flex: 1;
+  min-width: 0;
 }
+
+.registry-select {
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  flex: none;
+}
+.registry-select:hover { border-color: var(--border-strong); }
+.registry-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .search-icon {
   position: absolute;
