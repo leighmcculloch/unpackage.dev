@@ -4,14 +4,14 @@ A small [Deno] web app that lets you search [crates.io], [npmjs.com] and
 [pkg.go.dev], and view a folder-style git diff between any two published
 versions of a package.
 
-Live at <https://crate-diff.leigh.deno.net/>.
+Live at <https://unpackage.dev/>.
 
 By default the right side shows the latest version and the left side shows the
 version before it. Change either selector to diff any two versions; set `old`
 to `None (just view source)` to browse a single version.
 
 The comparison state lives in the URL hash, so a link like
-<https://crate-diff.leigh.deno.net/#crates.io/serde@1.0.227...1.0.228> opens
+<https://unpackage.dev/#crates.io/serde@1.0.227...1.0.228> opens
 directly to that diff and is shareable. Line selections are included too, for
 example `…@1.0.228/src/lib.rs?L10-L20`.
 
