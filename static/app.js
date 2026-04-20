@@ -47,7 +47,13 @@ const state = {
   registry: "crates.io", // "crates.io" | "npmjs.com" | ...
 };
 
-const KNOWN_REGISTRIES = new Set(["crates.io", "npmjs.com"]);
+const KNOWN_REGISTRIES = new Set(["crates.io", "npmjs.com", "pkg.go.dev"]);
+
+// Go module path escaping (uppercase → "!" + lowercase). Used to line up the
+// module prefix inside a module zip with the escaped form in the archive.
+function goEscape(s) {
+  return s.replace(/[A-Z]/g, (c) => "!" + c.toLowerCase());
+}
 
 function apiSearchUrl(registry, q, per) {
   return `/api/registry/${registry}/search?q=${encodeURIComponent(q)}&per_page=${encodeURIComponent(per)}`;
@@ -63,6 +69,7 @@ function apiDownloadUrl(registry, name, version) {
 
 function archiveExt(registry) {
   if (registry === "npmjs.com") return ".tgz";
+  if (registry === "pkg.go.dev") return ".zip";
   return ".crate";
 }
 
@@ -72,6 +79,7 @@ function safeFilename(name) {
 
 function registryPackageUrl(registry, name) {
   if (registry === "npmjs.com") return `https://www.npmjs.com/package/${name}`;
+  if (registry === "pkg.go.dev") return `https://pkg.go.dev/${name}`;
   return `https://crates.io/crates/${name}`;
 }
 
@@ -185,10 +193,9 @@ function writeHash() {
   if (!state.crate) return;
   let h = `${state.registry}/${state.crate.name}`;
   if (state.left && state.right) {
-    // Single-version view collapses to ".../ver".
     h += state.left === state.right
-      ? `/${state.left}`
-      : `/${state.left}...${state.right}`;
+      ? `@${state.left}`
+      : `@${state.left}...${state.right}`;
   }
   if (state.selectedFile) {
     h += `/${state.selectedFile}`;
@@ -210,8 +217,8 @@ function parseHash() {
   const raw = decodeURIComponent(location.hash.slice(1));
   if (!raw) return null;
 
-  // Strip the registry prefix; default to crates.io for backward compatibility
-  // with URLs saved before the registry segment existed.
+  // Registry is the first "/"-segment; default to crates.io for older URLs
+  // that omit it.
   const firstSlash = raw.indexOf("/");
   const firstSegment = firstSlash < 0 ? raw : raw.slice(0, firstSlash);
   let registry, rest;
@@ -224,31 +231,19 @@ function parseHash() {
   }
   if (!rest) return { registry, name: null, left: null, right: null, file: null, range: null };
 
-  // Name — may be a scoped npm package ("@scope/name") that contains a slash.
+  // Split name @ version. Names never contain "@" except at position 0 (npm
+  // scope), so find the first "@" that isn't at the start of the remainder.
+  const atStart = rest.startsWith("@") ? 1 : 0;
+  const atIdx = rest.indexOf("@", atStart);
   let name, afterName;
-  if (rest.startsWith("@")) {
-    const s1 = rest.indexOf("/");
-    const s2 = s1 >= 0 ? rest.indexOf("/", s1 + 1) : -1;
-    if (s2 < 0) {
-      name = rest;
-      afterName = "";
-    } else {
-      name = rest.slice(0, s2);
-      afterName = rest.slice(s2 + 1);
-    }
+  if (atIdx < 0) {
+    name = rest;
+    afterName = "";
   } else {
-    const s1 = rest.indexOf("/");
-    if (s1 < 0) {
-      name = rest;
-      afterName = "";
-    } else {
-      name = rest.slice(0, s1);
-      afterName = rest.slice(s1 + 1);
-    }
+    name = rest.slice(0, atIdx);
+    afterName = rest.slice(atIdx + 1);
   }
 
-  // Version portion — "old...new" or single "ver"; optionally followed by a
-  // file path and an optional "?L10[-L20]" / "?R10[-R20]" fragment.
   let left = null, right = null, file = null, range = null;
   if (afterName) {
     const vs = afterName.indexOf("/");
@@ -518,6 +513,61 @@ compareTabsEl.addEventListener("click", async (e) => {
 
 // ---------- tarball fetch + parse (cached) ----------
 
+function parseZip(buf) {
+  const files = {};
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let eocd = -1;
+  const minEocd = Math.max(0, buf.length - 65558);
+  for (let i = buf.length - 22; i >= minEocd; i--) {
+    if (buf[i] === 0x50 && buf[i + 1] === 0x4b && buf[i + 2] === 0x05 && buf[i + 3] === 0x06) {
+      eocd = i; break;
+    }
+  }
+  if (eocd < 0) throw new Error("not a zip archive");
+  const total = view.getUint16(eocd + 10, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  let p = cdOffset;
+  for (let e = 0; e < total; e++) {
+    if (view.getUint32(p, true) !== 0x02014b50) break;
+    const compMethod = view.getUint16(p + 10, true);
+    const compSize = view.getUint32(p + 20, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const lho = view.getUint32(p + 42, true);
+    const name = decoder.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith("/")) continue;
+
+    if (view.getUint32(lho, true) !== 0x04034b50) continue;
+    const lNameLen = view.getUint16(lho + 26, true);
+    const lExtraLen = view.getUint16(lho + 28, true);
+    const dataStart = lho + 30 + lNameLen + lExtraLen;
+    const data = buf.subarray(dataStart, dataStart + compSize);
+
+    let bytes;
+    if (compMethod === 0) bytes = data.slice();
+    else if (compMethod === 8) {
+      try { bytes = pako.inflateRaw(data); } catch { continue; }
+    } else continue;
+    files[name] = bytes;
+  }
+  return files;
+}
+
+function stripArchivePrefix(files, registry, name, version) {
+  if (registry === "pkg.go.dev") {
+    const prefix = `${goEscape(name)}@${version}/`;
+    const out = {};
+    for (const [p, b] of Object.entries(files)) {
+      if (p.startsWith(prefix)) out[p.slice(prefix.length)] = b;
+    }
+    return out;
+  }
+  return stripTopDir(files);
+}
+
 async function fetchCrateFiles(name, version) {
   const url = apiDownloadUrl(state.registry, name, version);
   let response;
@@ -530,8 +580,8 @@ async function fetchCrateFiles(name, version) {
     if (cache) { try { await cache.put(url, response.clone()); } catch { /* ignore */ } }
   }
   const buf = new Uint8Array(await response.arrayBuffer());
-  const tar = pako.inflate(buf);
-  return parseTar(tar);
+  if (state.registry === "pkg.go.dev") return parseZip(buf);
+  return parseTar(pako.inflate(buf));
 }
 
 function parseTar(buf) {
@@ -625,10 +675,13 @@ async function loadDiff() {
   sidebarEl.hidden = true;
 
   try {
-    const leftPromise = fetchCrateFiles(state.crate.name, left).then(stripTopDir);
+    const registry = state.registry;
+    const leftPromise = fetchCrateFiles(state.crate.name, left)
+      .then((f) => stripArchivePrefix(f, registry, state.crate.name, left));
     const rightPromise = sameVersion
       ? leftPromise
-      : fetchCrateFiles(state.crate.name, right).then(stripTopDir);
+      : fetchCrateFiles(state.crate.name, right)
+        .then((f) => stripArchivePrefix(f, registry, state.crate.name, right));
     const [leftFiles, rightFiles] = await Promise.all([leftPromise, rightPromise]);
     if (token !== state.loadToken) return;
     buildFileList(leftFiles, rightFiles);

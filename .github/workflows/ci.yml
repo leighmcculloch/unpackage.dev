@@ -63,3 +63,12 @@ jobs:
           curl -sfI "http://localhost:8000/api/registry/npmjs.com/download/express/4.18.2" \
             | grep -qi '^HTTP/.* 200'
           echo "::endgroup::"
+
+          echo "::group::pkg.go.dev proxy"
+          curl -sf "http://localhost:8000/api/registry/pkg.go.dev/search?q=github.com/gin-gonic/gin&per_page=1" \
+            | grep -q '"crates"'
+          curl -sf "http://localhost:8000/api/registry/pkg.go.dev/package/github.com/gin-gonic/gin" \
+            | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/pkg.go.dev/download/github.com/gin-gonic/gin/v1.9.1" \
+            | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"

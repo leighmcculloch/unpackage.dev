@@ -135,6 +135,71 @@ async function downloadNpm(name: string, version: string): Promise<Response> {
   });
 }
 
+// ---------- Go module proxy adapters (pkg.go.dev) ----------
+
+// Go module paths and versions are escaped on the wire: every uppercase
+// letter X becomes "!x" to avoid case-insensitive filesystem ambiguity.
+function goEscape(s: string): string {
+  return s.replace(/[A-Z]/g, (c) => "!" + c.toLowerCase());
+}
+
+function searchGo(q: string): Response {
+  // Go has no public module search API — echo the input as a single result
+  // so the user can press Enter / click to load it directly.
+  const q2 = q.trim();
+  const crates = q2 ? [{ name: q2, description: "", max_version: "" }] : [];
+  return new Response(JSON.stringify({ crates }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=60",
+    },
+  });
+}
+
+async function packageGo(name: string): Promise<Response> {
+  const escaped = goEscape(name);
+  const r = await fetch(`https://proxy.golang.org/${escaped}/@v/list`, {
+    headers: { "Accept": "text/plain" },
+  });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const list = (await r.text()).split("\n").map((s) => s.trim()).filter((s) =>
+    s
+  );
+  list.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const versions = list.map((num) => ({ num, yanked: false, created_at: "" }));
+  return new Response(
+    JSON.stringify({
+      crate: { name, description: "" },
+      versions,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+      },
+    },
+  );
+}
+
+async function downloadGo(name: string, version: string): Promise<Response> {
+  const u = `https://proxy.golang.org/${goEscape(name)}/@v/${
+    goEscape(version)
+  }.zip`;
+  const r = await fetch(u, { redirect: "follow" });
+  if (!r.ok || !r.body) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  return new Response(r.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 // ---------- router ----------
 
 function handler(req: Request): Promise<Response> | Response {
@@ -151,12 +216,14 @@ function handler(req: Request): Promise<Response> | Response {
       const per = url.searchParams.get("per_page") ?? "10";
       if (registry === "crates.io") return searchCratesIo(q, per);
       if (registry === "npmjs.com") return searchNpm(q, per);
+      if (registry === "pkg.go.dev") return searchGo(q);
       return new Response("unknown registry", { status: 400 });
     }
     if (action.startsWith("package/")) {
       const name = decodeURIComponent(action.slice("package/".length));
       if (registry === "crates.io") return packageCratesIo(name);
       if (registry === "npmjs.com") return packageNpm(name);
+      if (registry === "pkg.go.dev") return packageGo(name);
       return new Response("unknown registry", { status: 400 });
     }
     if (action.startsWith("download/")) {
@@ -167,6 +234,7 @@ function handler(req: Request): Promise<Response> | Response {
       const version = decodeURIComponent(rest2.slice(lastSlash + 1));
       if (registry === "crates.io") return downloadCratesIo(name, version);
       if (registry === "npmjs.com") return downloadNpm(name, version);
+      if (registry === "pkg.go.dev") return downloadGo(name, version);
       return new Response("unknown registry", { status: 400 });
     }
     return new Response("not found", { status: 404 });
