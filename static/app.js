@@ -420,16 +420,18 @@ function buildFileList(left, right) {
       collapsed: DEFAULT_COLLAPSED.has(path) || status === "unchanged",
     };
 
-    if (status !== "unchanged" && !isBin) {
+    if (!isBin) {
       data.leftText = a ? decodeText(a) : "";
       data.rightText = b ? decodeText(b) : "";
-      data.hunks = Diff.structuredPatch(
-        "", "", data.leftText, data.rightText, "", "", { context: 3 },
-      ).hunks;
-      for (const h of data.hunks) {
-        for (const line of h.lines) {
-          if (line.startsWith("+")) data.adds++;
-          else if (line.startsWith("-")) data.dels++;
+      if (status !== "unchanged") {
+        data.hunks = Diff.structuredPatch(
+          "", "", data.leftText, data.rightText, "", "", { context: 3 },
+        ).hunks;
+        for (const h of data.hunks) {
+          for (const line of h.lines) {
+            if (line.startsWith("+")) data.adds++;
+            else if (line.startsWith("-")) data.dels++;
+          }
         }
       }
     }
@@ -512,15 +514,22 @@ function renderFile(id) {
   const counts = isDiffable && (f.adds || f.dels)
     ? `<span class="counts"><span class="add">+${f.adds}</span><span class="del">-${f.dels}</span></span>`
     : "";
-  const fullToggle = isDiffable
-    ? `<button type="button" class="file-toggle-full" data-file="${f.id}">${f.fullyExpanded ? "Collapse to hunks" : "Expand full"}</button>`
-    : "";
+  const expandable = !f.isBinary;
+  let fullToggle = "";
+  if (expandable) {
+    const label = f.status === "unchanged"
+      ? (f.fullyExpanded ? "Hide content" : "Show content")
+      : (f.fullyExpanded ? "Collapse to hunks" : "Expand full");
+    fullToggle = `<button type="button" class="file-toggle-full" data-file="${f.id}">${label}</button>`;
+  }
 
   let body;
-  if (f.status === "unchanged") {
-    body = `<div class="file-note">File is identical in both versions.</div>`;
-  } else if (f.isBinary) {
+  if (f.isBinary) {
     body = `<div class="file-note">Binary file differs.</div>`;
+  } else if (f.status === "unchanged") {
+    body = f.fullyExpanded
+      ? renderUnchangedBody(f)
+      : `<div class="file-note">File is identical in both versions.</div>`;
   } else {
     body = renderDiffBody(f);
   }
@@ -636,6 +645,19 @@ function renderHunk(h, expand) {
       out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
       oldNo++; newNo++;
     }
+  }
+  return out.join("");
+}
+
+function renderUnchangedBody(f) {
+  // Both sides are identical; render the full file with matching line numbers.
+  const lines = trimTrailingEmpty(f.rightText.split("\n"));
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const n = i + 1;
+    out.push(
+      `<div class="line" data-old-line="${n}" data-new-line="${n}"><span class="ln">${n}</span><span class="ln">${n}</span><span class="lc"> ${escapeHtml(lines[i])}</span></div>`,
+    );
   }
   return out.join("");
 }
@@ -870,7 +892,11 @@ function applyFileNavigation() {
   if (!f) return;
   if (state.selection) {
     const { start, end } = state.selection;
-    if (start.side === end.side) {
+    if (f.status === "unchanged" && !f.isBinary) {
+      // Unchanged files don't render lines until "Show content" is toggled,
+      // so force it on so the selection can land somewhere.
+      f.fullyExpanded = true;
+    } else if (start.side === end.side) {
       expandGapsCoveringRange(f, {
         side: start.side,
         a: Math.min(start.line, end.line),
