@@ -23,6 +23,7 @@ const collapseAllBtn = $("collapse-all");
 const sidebarEl      = $("sidebar");
 const fileTreeEl     = $("file-tree");
 const filterTabsEl   = $("filter-tabs");
+const downloadBtn    = $("download-btn");
 const diffPaneEl     = $("diff-pane");
 const topbarEl       = document.querySelector(".topbar");
 const topbarToggleBtn = $("topbar-toggle");
@@ -1231,6 +1232,43 @@ collapseAllBtn.addEventListener("click", () => {
     const f = state.files.get(el.id);
     if (f) f.collapsed = true;
   });
+});
+
+async function downloadVersion(name, version) {
+  const url = `/api/download/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
+  let response;
+  try {
+    const cache = await caches.open("crates-diff-v1");
+    response = await cache.match(url);
+  } catch { /* cache unavailable */ }
+  if (!response) response = await fetch(url);
+  if (!response.ok) throw new Error(`download failed: ${name} ${version}`);
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = `${name}-${version}.crate`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+}
+
+downloadBtn.addEventListener("click", async () => {
+  if (!state.crate || !state.right) return;
+  downloadBtn.disabled = true;
+  try {
+    await downloadVersion(state.crate.name, state.right);
+    if (state.left && state.left !== state.right) {
+      // Small delay so the browser processes the first download before the second.
+      await new Promise((r) => setTimeout(r, 300));
+      await downloadVersion(state.crate.name, state.left);
+    }
+  } catch (err) {
+    console.error("[crates-diff] download failed:", err);
+  } finally {
+    downloadBtn.disabled = false;
+  }
 });
 
 topbarToggleBtn.addEventListener("click", () => {
