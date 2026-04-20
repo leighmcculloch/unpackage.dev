@@ -1,4 +1,4 @@
-// crates-diff — all heavy lifting runs in the browser.
+// unpackage.dev — all heavy lifting runs in the browser.
 // The Deno server only proxies crates.io (CORS + User-Agent).
 
 const $ = (id) => document.getElementById(id);
@@ -510,7 +510,7 @@ async function fetchCrateFiles(name, version) {
   const url = apiDownloadUrl(state.registry, name, version);
   let response;
   let cache = null;
-  try { cache = await caches.open("crates-diff-v1"); response = await cache.match(url); }
+  try { cache = await caches.open("unpackage-v1"); response = await cache.match(url); }
   catch { /* Cache API unavailable */ }
   if (!response) {
     response = await fetch(url);
@@ -1295,7 +1295,7 @@ async function downloadVersion(name, version) {
   const url = apiDownloadUrl(state.registry, name, version);
   let response;
   try {
-    const cache = await caches.open("crates-diff-v1");
+    const cache = await caches.open("unpackage-v1");
     response = await cache.match(url);
   } catch { /* cache unavailable */ }
   if (!response) response = await fetch(url);
@@ -1322,7 +1322,7 @@ downloadBtn.addEventListener("click", async () => {
       await downloadVersion(state.crate.name, state.left);
     }
   } catch (err) {
-    console.error("[crates-diff] download failed:", err);
+    console.error("[unpackage.dev] download failed:", err);
   } finally {
     downloadBtn.disabled = false;
   }
@@ -1395,7 +1395,7 @@ diffPaneEl.addEventListener("touchend", () => { touchLastY = null; pullAccum = 0
 
 function storedTheme() {
   try {
-    const v = localStorage.getItem("crates-diff-theme");
+    const v = localStorage.getItem("unpackage-theme");
     return (v === "light" || v === "dark") ? v : null;
   } catch { return null; }
 }
@@ -1413,10 +1413,10 @@ themeToggleBtn.addEventListener("click", (e) => {
   e.preventDefault();
   e.stopPropagation();
   const next = currentTheme() === "dark" ? "light" : "dark";
-  try { localStorage.setItem("crates-diff-theme", next); } catch { /* private mode / quota */ }
+  try { localStorage.setItem("unpackage-theme", next); } catch { /* private mode / quota */ }
   document.documentElement.setAttribute("data-theme", next);
   updateThemeToggleTitle();
-  console.log("[crates-diff] theme →", next, "| data-theme now:", document.documentElement.getAttribute("data-theme"));
+  console.log("[unpackage.dev] theme →", next, "| data-theme now:", document.documentElement.getAttribute("data-theme"));
 });
 
 // Keep the tooltip in sync if the OS theme changes while in "auto" mode.

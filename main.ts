@@ -1,6 +1,6 @@
 import { serveDir } from "jsr:@std/http@1/file-server";
 
-const USER_AGENT = "crates-diff (https://github.com/leighmcculloch)";
+const USER_AGENT = "unpackage.dev (https://github.com/leighmcculloch)";
 
 // ---------- crates.io adapters ----------
 
@@ -244,5 +244,5 @@ function handler(req: Request): Promise<Response> | Response {
 }
 
 const port = Number(Deno.env.get("PORT") ?? 8000);
-console.log(`crates-diff listening on http://localhost:${port}`);
+console.log(`unpackage.dev listening on http://localhost:${port}`);
 Deno.serve({ port }, handler);
