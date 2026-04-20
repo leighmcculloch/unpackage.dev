@@ -1345,15 +1345,51 @@ topbarToggleBtn.addEventListener("click", () => {
   syncTopToggleLabel();
 });
 
-// Scroll-driven: when the diff pane is at (or near) the top, show the top
-// bar; otherwise hide it so the diff has the screen. Bumped over a threshold
-// to avoid flicker on sub-pixel scroll positions.
+// Scrolling down past the top hides the top bar. Simply reaching the top
+// again does NOT bring it back — users have to overscroll (pull up past the
+// edge with the wheel or a touch swipe) to reveal it.
 diffPaneEl.addEventListener("scroll", () => {
-  const shouldCollapse = diffPaneEl.scrollTop > 5;
-  if (topbarEl.classList.contains("collapsed") !== shouldCollapse) {
-    setTopCollapsed(shouldCollapse);
+  if (diffPaneEl.scrollTop > 5 && !topbarEl.classList.contains("collapsed")) {
+    setTopCollapsed(true);
   }
+  if (diffPaneEl.scrollTop > 0) pullAccum = 0;
 });
+
+const PULL_THRESHOLD = 60; // pixels of upward pull required at scrollTop=0
+let pullAccum = 0;
+let pullTimer = 0;
+
+function registerPull(dy) {
+  // dy > 0 means "finger/wheel is pulling down" (revealing content above).
+  if (diffPaneEl.scrollTop !== 0) { pullAccum = 0; return; }
+  if (!topbarEl.classList.contains("collapsed")) return;
+  if (dy <= 0) return;
+  pullAccum += dy;
+  clearTimeout(pullTimer);
+  pullTimer = setTimeout(() => { pullAccum = 0; }, 400);
+  if (pullAccum > PULL_THRESHOLD) {
+    setTopCollapsed(false);
+    pullAccum = 0;
+  }
+}
+
+diffPaneEl.addEventListener("wheel", (e) => {
+  // Negative deltaY = scroll up = pull down gesture.
+  registerPull(-e.deltaY);
+}, { passive: true });
+
+let touchLastY = null;
+diffPaneEl.addEventListener("touchstart", (e) => {
+  touchLastY = e.touches[0]?.clientY ?? null;
+}, { passive: true });
+diffPaneEl.addEventListener("touchmove", (e) => {
+  if (touchLastY == null) return;
+  const y = e.touches[0]?.clientY ?? touchLastY;
+  const dy = y - touchLastY;
+  touchLastY = y;
+  registerPull(dy);
+}, { passive: true });
+diffPaneEl.addEventListener("touchend", () => { touchLastY = null; pullAccum = 0; }, { passive: true });
 
 // ---------- theme toggle ----------
 
