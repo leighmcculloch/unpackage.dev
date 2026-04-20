@@ -237,9 +237,18 @@ a:hover { text-decoration: underline; }
 /* ---------- topbar content ---------- */
 
 header {
-  padding-top: 1.25rem;
+  padding-top: 1rem;
   padding-bottom: 0.25rem;
 }
+
+header .header-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+header .header-main .tag { margin: 0; }
 
 h1 {
   margin: 0;
