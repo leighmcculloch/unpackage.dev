@@ -38,7 +38,7 @@
     </section>
 
     <section class="compare-wrap" hidden id="compare">
-      <div class="card">
+      <div class="card" id="compare-card" data-mode="compare">
         <div class="crate-title">
           <span id="crate-name"></span>
           <span class="title-sep">·</span>
@@ -52,7 +52,11 @@
             <span class="label">Copy link</span>
           </button>
         </div>
-        <div class="versions">
+        <div class="compare-tabs" id="compare-tabs" role="tablist">
+          <button class="tab active" data-mode="compare" type="button">Compare versions</button>
+          <button class="tab"        data-mode="view"    type="button">View source</button>
+        </div>
+        <div class="versions mode-compare">
           <label class="ver">
             <span>old</span>
             <select id="left-version"></select>
@@ -65,6 +69,12 @@
           <label class="ver">
             <span>new</span>
             <select id="right-version"></select>
+          </label>
+        </div>
+        <div class="versions mode-view">
+          <label class="ver">
+            <span>version</span>
+            <select id="view-version"></select>
           </label>
         </div>
       </div>

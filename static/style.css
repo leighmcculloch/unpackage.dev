@@ -378,6 +378,38 @@ h1 .dot {
   flex-wrap: wrap;
 }
 
+.compare-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin: 0 -0.3rem;
+  padding: 0 0.3rem;
+}
+
+.compare-tabs .tab {
+  padding: 0.45rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.compare-tabs .tab:hover { color: var(--fg); }
+
+.compare-tabs .tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+#compare-card[data-mode="compare"] .versions.mode-view,
+#compare-card[data-mode="view"]    .versions.mode-compare { display: none; }
+
 #crate-name {
   font-size: 1.05rem;
   font-weight: 700;

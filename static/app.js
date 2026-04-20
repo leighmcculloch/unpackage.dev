@@ -11,6 +11,9 @@ const crateNameEl    = $("crate-name");
 const crateLinkEl    = $("crate-link");
 const leftSel        = $("left-version");
 const rightSel       = $("right-version");
+const viewSel        = $("view-version");
+const compareCard    = $("compare-card");
+const compareTabsEl  = $("compare-tabs");
 const statsEl        = $("stats");
 const diffEl         = $("diff");
 const toolbarEl      = $("toolbar");
@@ -38,6 +41,7 @@ const state = {
   filter: "changed",   // "changed" | "all"
   selectedFile: null,  // file path persisted in URL
   selection: null,     // { start: {side, line}, end: {side, line} }
+  mode: "compare",     // "compare" | "view" — tab-driven, independent of left/right equality
 };
 
 // Paths that default to collapsed — noisy but frequently regenerated files.
@@ -149,7 +153,12 @@ function lineHtml(f, side, lineNum, fallback) {
 function writeHash() {
   if (!state.crate) return;
   let h = state.crate.name;
-  if (state.left && state.right) h += `/${state.left}...${state.right}`;
+  if (state.left && state.right) {
+    // Single-version view collapses to "#crate/ver".
+    h += state.left === state.right
+      ? `/${state.left}`
+      : `/${state.left}...${state.right}`;
+  }
   if (state.selectedFile) {
     h += `/${state.selectedFile}`;
     if (state.selection) {
@@ -173,23 +182,29 @@ function parseHash() {
   if (slash < 0) return { name: raw, left: null, right: null, file: null, range: null };
   const name = raw.slice(0, slash);
   const rest = raw.slice(slash + 1);
-  const sep = rest.indexOf("...");
-  if (sep < 0) return { name, left: null, right: null, file: null, range: null };
-  const left = rest.slice(0, sep);
-  const afterVer = rest.slice(sep + 3);
-  const filesep = afterVer.indexOf("/");
-  let right, file = null, range = null;
-  if (filesep < 0) {
-    right = afterVer;
+
+  // The version portion runs up to the next slash. "old...new" means compare;
+  // a plain version is a single-version view (old == new).
+  const nextSlash = rest.indexOf("/");
+  const verPart = nextSlash < 0 ? rest : rest.slice(0, nextSlash);
+  const afterVer = nextSlash < 0 ? "" : rest.slice(nextSlash + 1);
+
+  let left, right;
+  const sep = verPart.indexOf("...");
+  if (sep < 0) {
+    left = right = verPart;
   } else {
-    right = afterVer.slice(0, filesep);
-    const filePart = afterVer.slice(filesep + 1);
-    const q = filePart.indexOf("?");
-    if (q < 0) {
-      file = filePart;
-    } else {
-      file = filePart.slice(0, q);
-      range = parseLineRange(filePart.slice(q + 1));
+    left = verPart.slice(0, sep);
+    right = verPart.slice(sep + 3);
+  }
+
+  let file = null, range = null;
+  if (afterVer) {
+    const q = afterVer.indexOf("?");
+    if (q < 0) file = afterVer;
+    else {
+      file = afterVer.slice(0, q);
+      range = parseLineRange(afterVer.slice(q + 1));
     }
   }
   return { name, left, right, file, range };
@@ -309,6 +324,9 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null, pr
 
     state.right = byNum.has(preferredRight) ? preferredRight : fallbackRight;
     state.left = byNum.has(preferredLeft) ? preferredLeft : fallbackLeft;
+    // A URL like #crate/ver is a single-version view; anything else starts in
+    // compare mode, even if the two versions happen to match.
+    state.mode = (preferredLeft && preferredRight && preferredLeft === preferredRight) ? "view" : "compare";
 
     paintCompare();
     writeHash();
@@ -331,29 +349,104 @@ function paintCompare() {
   }).join("");
   leftSel.innerHTML = opts;
   rightSel.innerHTML = opts;
+  viewSel.innerHTML = opts;
   leftSel.value = state.left;
   rightSel.value = state.right;
+  viewSel.value = state.right;
+  applyMode();
   updateCompactSummary();
+}
+
+// Compare vs. view-source mode. Explicit — only changed by tab clicks or by
+// loading a URL, so picking same old/new in compare mode doesn't silently
+// flip the UI into view-source.
+function applyMode() {
+  compareCard.dataset.mode = state.mode;
+  compareTabsEl.querySelectorAll(".tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === state.mode);
+  });
+  // Belt and braces: force visibility via inline styles so this works even if
+  // the [data-mode] CSS rule is stale in a browser cache.
+  compareCard.querySelectorAll(".versions.mode-compare").forEach((el) => {
+    el.style.display = state.mode === "compare" ? "" : "none";
+  });
+  compareCard.querySelectorAll(".versions.mode-view").forEach((el) => {
+    el.style.display = state.mode === "view" ? "" : "none";
+  });
+  if (state.mode === "view") viewSel.value = state.right;
 }
 
 function updateCompactSummary() {
   if (!compactSummaryEl) return;
-  if (state.crate && state.left && state.right) {
-    compactSummaryEl.innerHTML =
-      `<span class="cs-name">${escapeHtml(state.crate.name)}</span>` +
+  if (!state.crate || !state.left || !state.right) {
+    compactSummaryEl.innerHTML = "";
+    return;
+  }
+  const name = `<span class="cs-name">${escapeHtml(state.crate.name)}</span>`;
+  if (state.left === state.right) {
+    compactSummaryEl.innerHTML = `${name}<span class="cs-ver">${escapeHtml(state.right)}</span>`;
+  } else {
+    compactSummaryEl.innerHTML = name +
       `<span class="cs-ver">${escapeHtml(state.left)}</span>` +
       `<span class="cs-arrow">→</span>` +
       `<span class="cs-ver">${escapeHtml(state.right)}</span>`;
-  } else {
-    compactSummaryEl.innerHTML = "";
   }
 }
 
 leftSel.addEventListener("change", async () => {
-  state.left = leftSel.value; updateCompactSummary(); writeHash(); await loadDiff();
+  state.left = leftSel.value;
+  updateCompactSummary();
+  writeHash();
+  await loadDiff();
 });
 rightSel.addEventListener("change", async () => {
-  state.right = rightSel.value; updateCompactSummary(); writeHash(); await loadDiff();
+  state.right = rightSel.value;
+  updateCompactSummary();
+  writeHash();
+  await loadDiff();
+});
+viewSel.addEventListener("change", async () => {
+  state.left = state.right = viewSel.value;
+  leftSel.value = state.left;
+  rightSel.value = state.right;
+  updateCompactSummary();
+  writeHash();
+  await loadDiff();
+});
+
+compareTabsEl.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".tab");
+  if (!btn) return;
+  const wanted = btn.dataset.mode;
+  if (wanted !== "view" && wanted !== "compare") return;
+
+  const before = { mode: state.mode, left: state.left, right: state.right };
+
+  if (wanted === "view") {
+    state.mode = "view";
+    state.left = state.right;
+    leftSel.value = state.left;
+  } else {
+    // Compare: keep the current "new" (state.right) and always set "old" to
+    // the version immediately prior to it.
+    state.mode = "compare";
+    const live = state.versions.filter((v) => !v.yanked);
+    const idx = live.findIndex((v) => v.num === state.right);
+    let newLeft = idx >= 0 ? live[idx + 1]?.num : undefined;
+    if (!newLeft) newLeft = live.find((v) => v.num !== state.right)?.num;
+    if (newLeft) {
+      state.left = newLeft;
+      leftSel.value = newLeft;
+    }
+  }
+
+  const changed = before.mode !== state.mode
+               || before.left !== state.left
+               || before.right !== state.right;
+  applyMode();
+  updateCompactSummary();
+  writeHash();
+  if (changed) await loadDiff();
 });
 
 // ---------- tarball fetch + parse (cached) ----------
@@ -455,27 +548,21 @@ async function loadDiff() {
   const left = state.left, right = state.right;
   if (!left || !right) return;
 
-  if (left === right) {
-    diffEl.innerHTML = `<div class="empty">Select two different versions.</div>`;
-    statsEl.innerHTML = "";
-    toolbarEl.hidden = true;
-    sidebarEl.hidden = true;
-    return;
-  }
-
-  diffEl.innerHTML =
-    `<div class="loading"><span class="spinner"></span>Fetching ${
-      escapeHtml(state.crate.name)
-    } ${escapeHtml(left)} and ${escapeHtml(right)}&hellip;</div>`;
+  const sameVersion = left === right;
+  const loadingText = sameVersion
+    ? `Fetching ${escapeHtml(state.crate.name)} ${escapeHtml(left)}&hellip;`
+    : `Fetching ${escapeHtml(state.crate.name)} ${escapeHtml(left)} and ${escapeHtml(right)}&hellip;`;
+  diffEl.innerHTML = `<div class="loading"><span class="spinner"></span>${loadingText}</div>`;
   statsEl.innerHTML = "";
   toolbarEl.hidden = true;
   sidebarEl.hidden = true;
 
   try {
-    const [leftFiles, rightFiles] = await Promise.all([
-      fetchCrateFiles(state.crate.name, left).then(stripTopDir),
-      fetchCrateFiles(state.crate.name, right).then(stripTopDir),
-    ]);
+    const leftPromise = fetchCrateFiles(state.crate.name, left).then(stripTopDir);
+    const rightPromise = sameVersion
+      ? leftPromise
+      : fetchCrateFiles(state.crate.name, right).then(stripTopDir);
+    const [leftFiles, rightFiles] = await Promise.all([leftPromise, rightPromise]);
     if (token !== state.loadToken) return;
     buildFileList(leftFiles, rightFiles);
     renderAll();
@@ -491,6 +578,7 @@ function buildFileList(left, right) {
   const paths = Array.from(new Set([...Object.keys(left), ...Object.keys(right)]));
   state.files = new Map();
   state.order = [];
+  const sameVersion = state.left === state.right;
 
   let i = 0;
   for (const path of paths) {
@@ -508,6 +596,10 @@ function buildFileList(left, right) {
     else if (bytesEqual(a, b)) status = "unchanged";
     else status = "modified";
 
+    // In single-version (view source) mode we want the whole tree browsable
+    // up front, with files expanded so their contents are visible. Cargo.lock
+    // stays collapsed by default regardless because it's noisy.
+    const isLock = DEFAULT_COLLAPSED.has(path);
     const data = {
       id, path, status,
       isBinary: isBin,
@@ -516,9 +608,9 @@ function buildFileList(left, right) {
       hunks: null,
       adds: 0,
       dels: 0,
-      fullyExpanded: false,
+      fullyExpanded: sameVersion && !isBin && status === "unchanged" && !isLock,
       expandedGaps: new Set(),
-      collapsed: DEFAULT_COLLAPSED.has(path) || status === "unchanged",
+      collapsed: isLock || (status === "unchanged" && !sameVersion),
     };
 
     if (!isBin) {
@@ -577,14 +669,18 @@ function renderAll() {
 
   statsEl.innerHTML = renderStats(counts);
   toolbarEl.hidden = false;
+  applyMode();
 
   const anyChanged = counts.added + counts.removed + counts.modified > 0;
+  // If nothing changed (view source, or genuinely identical versions) default
+  // the sidebar filter to "all" so the user sees every file.
+  if (!anyChanged) state.filter = "all";
   sidebarEl.hidden = !items.length;
 
   renderSidebar();
 
-  if (!anyChanged) {
-    diffEl.innerHTML = `<div class="empty">No differences between these versions.</div>`;
+  if (!items.length) {
+    diffEl.innerHTML = `<div class="empty">No files.</div>`;
     return;
   }
 
@@ -1218,6 +1314,8 @@ window.addEventListener("hashchange", () => {
     if (parsed.right) { state.right = parsed.right; rightSel.value = parsed.right; }
     state.selectedFile = parsed.file;
     state.selection = parsed.range;
+    state.mode = (parsed.left && parsed.right && parsed.left === parsed.right) ? "view" : "compare";
+    applyMode();
     loadDiff().then(() => { if (parsed.file) applyFileNavigation(); });
   } else {
     selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
