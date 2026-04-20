@@ -31,14 +31,14 @@
     <section class="search">
       <div class="search-row">
         <select id="registry-sel" class="registry-select" aria-label="Package registry">
-          <option value="crates.io">crates.io</option>
-          <option value="npmjs.com">npmjs.com</option>
-          <option value="proxy.golang.org">proxy.golang.org</option>
-          <option value="rubygems.org">rubygems.org</option>
-          <option value="pypi.org">pypi.org</option>
-          <option value="nuget.org">nuget.org</option>
-          <option value="hex.pm">hex.pm</option>
-          <option value="pub.dev">pub.dev</option>
+          <option value="crates.io">Rust (crates.io)</option>
+          <option value="npmjs.com">JavaScript (npmjs.com)</option>
+          <option value="proxy.golang.org">Go (proxy.golang.org)</option>
+          <option value="rubygems.org">Ruby (rubygems.org)</option>
+          <option value="pypi.org">Python (pypi.org)</option>
+          <option value="nuget.org">.NET (nuget.org)</option>
+          <option value="hex.pm">Elixir / Erlang (hex.pm)</option>
+          <option value="pub.dev">Dart (pub.dev)</option>
         </select>
         <div class="search-box">
           <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -85,6 +85,7 @@
       <span class="compact-summary" id="compact-summary"></span>
       <div class="toolbar-spacer"></div>
       <div class="stats" id="stats"></div>
+      <button id="ignore-ws-toggle" class="btn btn-ghost active" type="button" title="Toggle: ignore whitespace differences in diffs" aria-pressed="true">Ignore whitespace</button>
       <button id="expand-all"   class="btn btn-ghost" type="button">Expand all</button>
       <button id="collapse-all" class="btn btn-ghost" type="button">Collapse all</button>
       <button id="theme-toggle" class="btn btn-ghost" type="button" title="Toggle theme" aria-label="Toggle theme">

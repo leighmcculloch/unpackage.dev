@@ -16,6 +16,7 @@ const toolbarEl      = $("toolbar");
 const copyLinkBtn    = $("copy-link");
 const expandAllBtn   = $("expand-all");
 const collapseAllBtn = $("collapse-all");
+const ignoreWsBtn    = $("ignore-ws-toggle");
 const sidebarEl      = $("sidebar");
 const fileTreeEl     = $("file-tree");
 const filterTabsEl   = $("filter-tabs");
@@ -40,6 +41,7 @@ const state = {
   selectedFile: null,  // file path persisted in URL
   selection: null,     // { start: {side, line}, end: {side, line} }
   registry: "crates.io", // "crates.io" | "npmjs.com" | ...
+  ignoreWhitespace: true, // default — ignore whitespace-only diffs
 };
 
 const KNOWN_REGISTRIES = new Set([
@@ -577,8 +579,8 @@ async function fetchCrateFiles(name, version) {
   const buf = new Uint8Array(await response.arrayBuffer());
   const fmt = archiveFormat(state.registry);
   if (fmt === "zip") return parseZip(buf);
-  if (fmt === "gem") return extractNestedTarGz(parseTar(buf), "data.tar.gz");
-  if (fmt === "hex") return extractNestedTarGz(parseTar(buf), "contents.tar.gz");
+  if (fmt === "gem") return extractGem(parseTar(buf));
+  if (fmt === "hex") return extractHex(parseTar(buf));
   // Default: gzipped tar (crates.io, npmjs.com, pypi.org, pub.dev).
   return parseTar(pako.inflate(buf));
 }
@@ -587,6 +589,28 @@ function extractNestedTarGz(outer, innerName) {
   const inner = outer[innerName];
   if (!inner) throw new Error(`archive missing ${innerName}`);
   return parseTar(pako.inflate(inner));
+}
+
+// .gem archives wrap the actual source in data.tar.gz and the gemspec-style
+// metadata in metadata.gz. Expose both — meta-gems like `rails` have almost
+// nothing in data.tar.gz and their real info lives in metadata.gz.
+function extractGem(outer) {
+  const files = extractNestedTarGz(outer, "data.tar.gz");
+  const meta = outer["metadata.gz"];
+  if (meta) {
+    try { files["METADATA.yaml"] = pako.inflate(meta); } catch { /* ignore */ }
+  }
+  return files;
+}
+
+// hex.pm archives put source under contents.tar.gz and expose
+// metadata.config, CHECKSUM, and VERSION alongside it. Keep those visible.
+function extractHex(outer) {
+  const files = extractNestedTarGz(outer, "contents.tar.gz");
+  for (const name of ["metadata.config", "CHECKSUM", "VERSION"]) {
+    if (outer[name]) files[name] = outer[name];
+  }
+  return files;
 }
 
 function parseTar(buf) {
@@ -743,7 +767,8 @@ function buildFileList(left, right) {
       data.rightText = b ? decodeText(b) : "";
       if (status !== "unchanged") {
         data.hunks = Diff.structuredPatch(
-          "", "", data.leftText, data.rightText, "", "", { context: 3 },
+          "", "", data.leftText, data.rightText, "", "",
+          { context: 3, ignoreWhitespace: state.ignoreWhitespace },
         ).hunks;
         for (const h of data.hunks) {
           for (const line of h.lines) {
@@ -886,11 +911,18 @@ function renderFile(id) {
 
 function renderDiffBody(f) {
   const hunks = f.fullyExpanded
-    ? Diff.structuredPatch("", "", f.leftText, f.rightText, "", "",
-        { context: Number.MAX_SAFE_INTEGER }).hunks
+    ? Diff.structuredPatch("", "", f.leftText, f.rightText, "", "", {
+        context: Number.MAX_SAFE_INTEGER,
+        ignoreWhitespace: state.ignoreWhitespace,
+      }).hunks
     : f.hunks;
 
-  if (!hunks || !hunks.length) return "";
+  if (!hunks || !hunks.length) {
+    if (f.status === "modified" && state.ignoreWhitespace) {
+      return `<div class="file-note">Only whitespace differs — toggle "Show whitespace" to see them.</div>`;
+    }
+    return "";
+  }
 
   // When fully expanded we never show gap expanders.
   if (f.fullyExpanded) return hunks.map((h) => renderHunk(f, h)).join("");
@@ -1357,6 +1389,46 @@ collapseAllBtn.addEventListener("click", () => {
     if (f) f.collapsed = true;
   });
 });
+
+ignoreWsBtn.addEventListener("click", () => {
+  state.ignoreWhitespace = !state.ignoreWhitespace;
+  ignoreWsBtn.classList.toggle("active", state.ignoreWhitespace);
+  ignoreWsBtn.setAttribute("aria-pressed", String(state.ignoreWhitespace));
+  ignoreWsBtn.textContent = state.ignoreWhitespace
+    ? "Ignore whitespace"
+    : "Show whitespace";
+  recomputeHunks();
+  rerenderAllFiles();
+});
+
+function recomputeHunks() {
+  for (const f of state.files.values()) {
+    if (f.status !== "modified" || f.isBinary) continue;
+    if (f.leftText == null || f.rightText == null) continue;
+    f.hunks = Diff.structuredPatch(
+      "", "", f.leftText, f.rightText, "", "",
+      { context: 3, ignoreWhitespace: state.ignoreWhitespace },
+    ).hunks;
+    f.adds = 0;
+    f.dels = 0;
+    for (const h of f.hunks) {
+      for (const line of h.lines) {
+        if (line.startsWith("+")) f.adds++;
+        else if (line.startsWith("-")) f.dels++;
+      }
+    }
+    // Gap indexes shift when hunks change; drop stale expanded-gap selections.
+    f.expandedGaps.clear();
+  }
+}
+
+function rerenderAllFiles() {
+  if (!state.files.size) return;
+  const html = state.order.map((id) => renderFile(id)).join("");
+  diffEl.innerHTML = html;
+  applyFilterToDiff();
+  applyHighlight();
+}
 
 async function downloadVersion(name, version) {
   const url = apiDownloadUrl(state.registry, name, version);
