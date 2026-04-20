@@ -889,6 +889,7 @@ select option.yanked {
   font-family: var(--mono);
   font-size: 0.8rem;
   line-height: 1.5;
+  overflow-x: auto;
 }
 
 .file.collapsed .file-body { display: none; }
@@ -896,8 +897,10 @@ select option.yanked {
 /* unified diff lines: [old-num] [new-num] [marker + text] */
 .line {
   display: grid;
-  grid-template-columns: 3.25rem 3.25rem 1fr;
+  grid-template-columns: 3.25rem 3.25rem minmax(max-content, 1fr);
   white-space: pre;
+  min-width: 100%;
+  width: max-content;
 }
 
 .ln {
