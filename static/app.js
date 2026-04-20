@@ -343,7 +343,10 @@ function paintCompare() {
   crateLinkEl.href = `https://crates.io/crates/${state.crate.name}`;
 
   const opts = state.versions.map((v) => {
-    const label = v.yanked ? `${v.num} (yanked)` : v.num;
+    const date = typeof v.created_at === "string" ? v.created_at.slice(0, 10) : "";
+    let label = v.num;
+    if (date) label += `  ·  ${date}`;
+    if (v.yanked) label += "  (yanked)";
     const cls = v.yanked ? ' class="yanked"' : "";
     return `<option value="${escapeHtml(v.num)}"${cls}>${escapeHtml(label)}</option>`;
   }).join("");
