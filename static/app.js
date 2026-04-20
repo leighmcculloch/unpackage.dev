@@ -24,6 +24,7 @@ const diffPaneEl     = $("diff-pane");
 const topbarEl       = document.querySelector(".topbar");
 const topbarToggleBtn = $("topbar-toggle");
 const compactSummaryEl = $("compact-summary");
+const themeToggleBtn = $("theme-toggle");
 
 // --- state
 const state = {
@@ -996,6 +997,41 @@ topbarToggleBtn.addEventListener("click", () => {
   if (label) label.textContent = collapsed ? "Show top" : "Hide top";
   topbarToggleBtn.title = collapsed ? "Show top" : "Hide top";
 });
+
+// ---------- theme toggle ----------
+
+function storedTheme() {
+  try {
+    const v = localStorage.getItem("crates-diff-theme");
+    return (v === "light" || v === "dark") ? v : null;
+  } catch { return null; }
+}
+
+function currentTheme() {
+  return storedTheme() ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+
+function updateThemeToggleTitle() {
+  const t = currentTheme();
+  themeToggleBtn.title = t === "dark" ? "Switch to light theme" : "Switch to dark theme";
+}
+
+themeToggleBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  try { localStorage.setItem("crates-diff-theme", next); } catch { /* private mode / quota */ }
+  document.documentElement.setAttribute("data-theme", next);
+  updateThemeToggleTitle();
+  console.log("[crates-diff] theme →", next, "| data-theme now:", document.documentElement.getAttribute("data-theme"));
+});
+
+// Keep the tooltip in sync if the OS theme changes while in "auto" mode.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (!storedTheme()) updateThemeToggleTitle();
+});
+
+updateThemeToggleTitle();
 
 // ---------- helpers ----------
 

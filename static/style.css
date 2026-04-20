@@ -1,5 +1,7 @@
 :root {
   color-scheme: light dark;
+
+  /* Light defaults. Dark variants are applied further down. */
   --bg: #f8f8f5;
   --bg-soft: #efeeea;
   --fg: #1a1a1a;
@@ -26,6 +28,11 @@
   --gutter-bg: #fafbfc;
   --gutter-fg: #9aa0a6;
 
+  --select-ln-bg: #fff3a3;
+  --select-ln-fg: #5a3a00;
+  --select-lc-bg: rgba(255, 235, 59, 0.16);
+  --select-tint:  rgba(255, 235, 59, 0.3);
+
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -35,8 +42,11 @@
   --sidebar-w: 280px;
 }
 
+/* Dark variables — defined once and applied either via OS preference (when
+   no explicit theme is set) or via data-theme="dark" (explicit override). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #121317;
     --bg-soft: #181a1f;
     --fg: #ececea;
@@ -63,10 +73,54 @@
     --gutter-bg: #15171b;
     --gutter-fg: #6e7681;
 
+    --select-ln-bg: rgba(210, 160, 40, 0.45);
+    --select-ln-fg: #ffd787;
+    --select-lc-bg: rgba(210, 160, 40, 0.18);
+    --select-tint:  rgba(210, 160, 40, 0.3);
+
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.3);
   }
 }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121317;
+  --bg-soft: #181a1f;
+  --fg: #ececea;
+  --fg-soft: #c8c7c2;
+  --muted: #878781;
+  --card: #1a1c21;
+  --border: #2a2c33;
+  --border-strong: #383a42;
+  --accent: #e87b3a;
+  --accent-soft: rgba(232, 123, 58, 0.12);
+
+  --add-bg: rgba(46, 160, 67, 0.15);
+  --add-fg: #3fb950;
+  --add-strong: #2ea043;
+  --del-bg: rgba(248, 81, 73, 0.15);
+  --del-fg: #f85149;
+  --del-strong: #da3633;
+  --mod-bg: rgba(56, 139, 253, 0.15);
+  --mod-fg: #58a6ff;
+  --mod-strong: #388bfd;
+
+  --hunk-bg: rgba(56, 139, 253, 0.1);
+  --hunk-fg: #79b8ff;
+  --gutter-bg: #15171b;
+  --gutter-fg: #6e7681;
+
+  --select-ln-bg: rgba(210, 160, 40, 0.45);
+  --select-ln-fg: #ffd787;
+  --select-lc-bg: rgba(210, 160, 40, 0.18);
+  --select-tint:  rgba(210, 160, 40, 0.3);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -436,6 +490,19 @@ select option.yanked {
 #topbar-toggle .chev-up { transition: transform 150ms ease; }
 .topbar.collapsed #topbar-toggle .chev-up { transform: rotate(180deg); }
 
+/* Theme toggle: the visible icon is the one for the mode you'd switch TO.
+   In light mode → moon, in dark mode → sun. */
+#theme-toggle .icon-to-dark,
+#theme-toggle .icon-to-light { display: none; }
+:root:not([data-theme="dark"]) #theme-toggle .icon-to-dark { display: inline; }
+:root[data-theme="dark"] #theme-toggle .icon-to-light { display: inline; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) #theme-toggle .icon-to-dark { display: none; }
+  :root:not([data-theme]) #theme-toggle .icon-to-light { display: inline; }
+}
+:root[data-theme="light"] #theme-toggle .icon-to-dark { display: inline; }
+:root[data-theme="light"] #theme-toggle .icon-to-light { display: none; }
+
 /* ---------- sidebar ---------- */
 
 .sidebar {
@@ -750,15 +817,10 @@ select option.yanked {
 .line[data-old-line] .ln:hover { color: var(--accent); }
 
 /* Selected-line highlight, layered after add/del so it overrides them. */
-.line.selected .ln      { background: #fff3a3; color: #5a3a00; font-weight: 600; }
-.line.selected .lc      { background: rgba(255, 235, 59, 0.16); }
-.line.selected.add .lc  { background: color-mix(in srgb, rgba(255, 235, 59, 0.3), var(--add-bg)); }
-.line.selected.del .lc  { background: color-mix(in srgb, rgba(255, 235, 59, 0.3), var(--del-bg)); }
-
-@media (prefers-color-scheme: dark) {
-  .line.selected .ln { background: rgba(210, 160, 40, 0.45); color: #ffd787; }
-  .line.selected .lc { background: rgba(210, 160, 40, 0.18); }
-}
+.line.selected .ln      { background: var(--select-ln-bg); color: var(--select-ln-fg); font-weight: 600; }
+.line.selected .lc      { background: var(--select-lc-bg); }
+.line.selected.add .lc  { background: color-mix(in srgb, var(--select-tint), var(--add-bg)); }
+.line.selected.del .lc  { background: color-mix(in srgb, var(--select-tint), var(--del-bg)); }
 
 .line.note .lc {
   color: var(--muted);
