@@ -1328,11 +1328,6 @@ downloadBtn.addEventListener("click", async () => {
   }
 });
 
-// Whether the next scroll of the diff pane is allowed to auto-collapse the
-// top bar. Armed on load / after a manual expand; disarmed once fired or
-// when the user collapses manually.
-let autoCollapseArmed = true;
-
 function syncTopToggleLabel() {
   const collapsed = topbarEl.classList.contains("collapsed");
   const label = topbarToggleBtn.querySelector(".label");
@@ -1346,18 +1341,18 @@ function setTopCollapsed(collapsed) {
 }
 
 topbarToggleBtn.addEventListener("click", () => {
-  const collapsed = topbarEl.classList.toggle("collapsed");
+  topbarEl.classList.toggle("collapsed");
   syncTopToggleLabel();
-  // Collapsed manually → don't re-trigger. Expanded → a subsequent scroll can
-  // hide it again for more diff room.
-  autoCollapseArmed = !collapsed;
 });
 
+// Scroll-driven: when the diff pane is at (or near) the top, show the top
+// bar; otherwise hide it so the diff has the screen. Bumped over a threshold
+// to avoid flicker on sub-pixel scroll positions.
 diffPaneEl.addEventListener("scroll", () => {
-  if (!autoCollapseArmed) return;
-  if (diffPaneEl.scrollTop <= 10) return;
-  autoCollapseArmed = false;
-  if (!topbarEl.classList.contains("collapsed")) setTopCollapsed(true);
+  const shouldCollapse = diffPaneEl.scrollTop > 5;
+  if (topbarEl.classList.contains("collapsed") !== shouldCollapse) {
+    setTopCollapsed(shouldCollapse);
+  }
 });
 
 // ---------- theme toggle ----------
@@ -1472,11 +1467,9 @@ window.addEventListener("hashchange", () => {
     syncRegistryUI();
     if (parsed.name) {
       await selectCrate(parsed.name, parsed.left, parsed.right, parsed.file, parsed.range);
-      // Opening a direct comparison link — give the diff the whole screen.
-      if (parsed.left && parsed.right) {
-        setTopCollapsed(true);
-        autoCollapseArmed = false;
-      }
+      // Opening a direct comparison link — give the diff the whole screen
+      // until the user scrolls back to the top.
+      if (parsed.left && parsed.right) setTopCollapsed(true);
     }
   } else {
     syncRegistryUI();
