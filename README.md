@@ -1,8 +1,9 @@
 # unpackage.dev
 
-A small [Deno] web app that lets you search [crates.io], [npmjs.com] and
-[proxy.golang.org][pkg.go.dev], and view a folder-style git diff between any
-two published versions of a package.
+A small [Deno] web app that lets you search [crates.io], [npmjs.com],
+[proxy.golang.org][pkg.go.dev], [rubygems.org], [pypi.org], [nuget.org],
+[hex.pm], and [pub.dev], and view a folder-style git diff between any two
+published versions of a package.
 
 Live at <https://unpackage.dev/>.
 
@@ -32,7 +33,8 @@ the browser doesn't trip over CORS or missing `User-Agent` requirements:
 - `GET /api/registry/{registry}/package/{name}` &rarr; package metadata and versions
 - `GET /api/registry/{registry}/download/{name}/{version}` &rarr; the archive
 
-`{registry}` is one of `crates.io`, `npmjs.com`, or `proxy.golang.org`.
+`{registry}` is one of `crates.io`, `npmjs.com`, `proxy.golang.org`,
+`rubygems.org`, `pypi.org`, `nuget.org`, `hex.pm`, or `pub.dev`.
 
 Everything else happens in the browser:
 
@@ -62,3 +64,8 @@ static/app.js       Search, archive parsing, diffing, URL-hash sync
 [crates.io]: https://crates.io
 [npmjs.com]: https://www.npmjs.com
 [pkg.go.dev]: https://pkg.go.dev
+[rubygems.org]: https://rubygems.org
+[pypi.org]: https://pypi.org
+[nuget.org]: https://www.nuget.org
+[hex.pm]: https://hex.pm
+[pub.dev]: https://pub.dev

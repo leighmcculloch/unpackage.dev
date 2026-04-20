@@ -75,3 +75,28 @@ jobs:
           curl -sfI "http://localhost:8000/api/registry/proxy.golang.org/download/github.com/gin-gonic/gin/v1.9.1" \
             | grep -qi '^HTTP/.* 200'
           echo "::endgroup::"
+
+          echo "::group::rubygems.org proxy"
+          curl -sf "http://localhost:8000/api/registry/rubygems.org/package/rails" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/rubygems.org/download/rails/7.1.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::pypi.org proxy"
+          curl -sf "http://localhost:8000/api/registry/pypi.org/package/requests" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/pypi.org/download/requests/2.31.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::nuget.org proxy"
+          curl -sf "http://localhost:8000/api/registry/nuget.org/package/Newtonsoft.Json" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/nuget.org/download/Newtonsoft.Json/13.0.3" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::hex.pm proxy"
+          curl -sf "http://localhost:8000/api/registry/hex.pm/package/phoenix" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/hex.pm/download/phoenix/1.7.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::pub.dev proxy"
+          curl -sf "http://localhost:8000/api/registry/pub.dev/package/http" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/pub.dev/download/http/1.1.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"

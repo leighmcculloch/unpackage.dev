@@ -42,7 +42,16 @@ const state = {
   registry: "crates.io", // "crates.io" | "npmjs.com" | ...
 };
 
-const KNOWN_REGISTRIES = new Set(["crates.io", "npmjs.com", "proxy.golang.org"]);
+const KNOWN_REGISTRIES = new Set([
+  "crates.io",
+  "npmjs.com",
+  "proxy.golang.org",
+  "rubygems.org",
+  "pypi.org",
+  "nuget.org",
+  "hex.pm",
+  "pub.dev",
+]);
 
 // Go module path escaping (uppercase → "!" + lowercase). Used to line up the
 // module prefix inside a module zip with the escaped form in the archive.
@@ -63,9 +72,29 @@ function apiDownloadUrl(registry, name, version) {
 }
 
 function archiveExt(registry) {
-  if (registry === "npmjs.com") return ".tgz";
-  if (registry === "proxy.golang.org") return ".zip";
-  return ".crate";
+  switch (registry) {
+    case "crates.io":         return ".crate";
+    case "npmjs.com":         return ".tgz";
+    case "proxy.golang.org":  return ".zip";
+    case "rubygems.org":      return ".gem";
+    case "pypi.org":          return ".tar.gz";
+    case "nuget.org":         return ".nupkg";
+    case "hex.pm":            return ".tar";
+    case "pub.dev":           return ".tar.gz";
+    default:                  return ".archive";
+  }
+}
+
+// How the archive bytes should be parsed before we see files.
+function archiveFormat(registry) {
+  switch (registry) {
+    case "proxy.golang.org":
+    case "nuget.org":
+      return "zip";
+    case "rubygems.org": return "gem";  // plain tar with data.tar.gz inside
+    case "hex.pm":       return "hex";  // plain tar with contents.tar.gz inside
+    default:             return "targz"; // crates.io, npmjs.com, pypi.org, pub.dev
+  }
 }
 
 function safeFilename(name) {
@@ -73,11 +102,19 @@ function safeFilename(name) {
 }
 
 function registryPackageUrl(registry, name) {
-  if (registry === "npmjs.com") return `https://www.npmjs.com/package/${name}`;
-  // The archive comes from proxy.golang.org, but pkg.go.dev is where users
-  // read Go module docs — keep the "open on registry" link pointing there.
-  if (registry === "proxy.golang.org") return `https://pkg.go.dev/${name}`;
-  return `https://crates.io/crates/${name}`;
+  switch (registry) {
+    case "crates.io":         return `https://crates.io/crates/${name}`;
+    case "npmjs.com":         return `https://www.npmjs.com/package/${name}`;
+    // Archives come from proxy.golang.org; pkg.go.dev is where users read Go
+    // module docs — point the "open on registry" link there.
+    case "proxy.golang.org":  return `https://pkg.go.dev/${name}`;
+    case "rubygems.org":      return `https://rubygems.org/gems/${name}`;
+    case "pypi.org":          return `https://pypi.org/project/${name}/`;
+    case "nuget.org":         return `https://www.nuget.org/packages/${name}`;
+    case "hex.pm":            return `https://hex.pm/packages/${name}`;
+    case "pub.dev":           return `https://pub.dev/packages/${name}`;
+    default:                  return "#";
+  }
 }
 
 // Paths that default to collapsed — noisy but frequently regenerated files.
@@ -498,6 +535,8 @@ function parseZip(buf) {
 
 function stripArchivePrefix(files, registry, name, version) {
   if (registry === "proxy.golang.org") {
+    // Go module zips nest content under {escaped-module}@{version}/… with
+    // multiple slashes, which the generic detector below can't handle.
     const prefix = `${goEscape(name)}@${version}/`;
     const out = {};
     for (const [p, b] of Object.entries(files)) {
@@ -505,7 +544,23 @@ function stripArchivePrefix(files, registry, name, version) {
     }
     return out;
   }
-  return stripTopDir(files);
+  return stripCommonTopDir(files);
+}
+
+// If every path shares the same top-level directory, strip it. Handles
+// crates.io ("{name}-{version}/"), npm ("package/"), pypi sdists
+// ("{name}-{version}/"), and leaves nuget/rubygems/hex/pub.dev alone since
+// they don't have a uniform root.
+function stripCommonTopDir(files) {
+  const paths = Object.keys(files);
+  if (!paths.length) return files;
+  const slash = paths[0].indexOf("/");
+  if (slash < 0) return files;
+  const prefix = paths[0].slice(0, slash + 1);
+  if (!paths.every((p) => p.startsWith(prefix))) return files;
+  const out = {};
+  for (const p of paths) out[p.slice(prefix.length)] = files[p];
+  return out;
 }
 
 async function fetchCrateFiles(name, version) {
@@ -520,8 +575,18 @@ async function fetchCrateFiles(name, version) {
     if (cache) { try { await cache.put(url, response.clone()); } catch { /* ignore */ } }
   }
   const buf = new Uint8Array(await response.arrayBuffer());
-  if (state.registry === "proxy.golang.org") return parseZip(buf);
+  const fmt = archiveFormat(state.registry);
+  if (fmt === "zip") return parseZip(buf);
+  if (fmt === "gem") return extractNestedTarGz(parseTar(buf), "data.tar.gz");
+  if (fmt === "hex") return extractNestedTarGz(parseTar(buf), "contents.tar.gz");
+  // Default: gzipped tar (crates.io, npmjs.com, pypi.org, pub.dev).
   return parseTar(pako.inflate(buf));
+}
+
+function extractNestedTarGz(outer, innerName) {
+  const inner = outer[innerName];
+  if (!inner) throw new Error(`archive missing ${innerName}`);
+  return parseTar(pako.inflate(inner));
 }
 
 function parseTar(buf) {
