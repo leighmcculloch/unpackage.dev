@@ -33,6 +33,22 @@
   --select-lc-bg: rgba(255, 235, 59, 0.16);
   --select-tint:  rgba(255, 235, 59, 0.3);
 
+  /* Syntax highlighting — GitHub-ish light palette. */
+  --hl-keyword:  #d73a49;
+  --hl-string:   #032f62;
+  --hl-comment:  #6a737d;
+  --hl-number:   #005cc5;
+  --hl-type:     #6f42c1;
+  --hl-function: #6f42c1;
+  --hl-attr:     #005cc5;
+  --hl-literal:  #005cc5;
+  --hl-builtin:  #e36209;
+  --hl-tag:      #22863a;
+  --hl-meta:     #8b5800;
+  --hl-variable: #e36209;
+  --hl-symbol:   #22863a;
+  --hl-section:  #005cc5;
+
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -78,6 +94,21 @@
     --select-lc-bg: rgba(210, 160, 40, 0.18);
     --select-tint:  rgba(210, 160, 40, 0.3);
 
+    --hl-keyword:  #ff7b72;
+    --hl-string:   #a5d6ff;
+    --hl-comment:  #8b949e;
+    --hl-number:   #79c0ff;
+    --hl-type:     #ffa657;
+    --hl-function: #d2a8ff;
+    --hl-attr:     #79c0ff;
+    --hl-literal:  #79c0ff;
+    --hl-builtin:  #ffa657;
+    --hl-tag:      #7ee787;
+    --hl-meta:     #8b949e;
+    --hl-variable: #ffa657;
+    --hl-symbol:   #7ee787;
+    --hl-section:  #79c0ff;
+
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.3);
   }
@@ -116,11 +147,46 @@
   --select-lc-bg: rgba(210, 160, 40, 0.18);
   --select-tint:  rgba(210, 160, 40, 0.3);
 
+  --hl-keyword:  #ff7b72;
+  --hl-string:   #a5d6ff;
+  --hl-comment:  #8b949e;
+  --hl-number:   #79c0ff;
+  --hl-type:     #ffa657;
+  --hl-function: #d2a8ff;
+  --hl-attr:     #79c0ff;
+  --hl-literal:  #79c0ff;
+  --hl-builtin:  #ffa657;
+  --hl-tag:      #7ee787;
+  --hl-meta:     #8b949e;
+  --hl-variable: #ffa657;
+  --hl-symbol:   #7ee787;
+  --hl-section:  #79c0ff;
+
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
 :root[data-theme="light"] { color-scheme: light; }
+
+/* highlight.js token styles. Keep selectors simple so they win over the diff
+   row's color but do not override the selection highlight. */
+.hljs-keyword, .hljs-selector-tag, .hljs-subst        { color: var(--hl-keyword); }
+.hljs-string, .hljs-template-string, .hljs-regexp     { color: var(--hl-string); }
+.hljs-comment, .hljs-quote                            { color: var(--hl-comment); font-style: italic; }
+.hljs-number, .hljs-literal                           { color: var(--hl-number); }
+.hljs-type, .hljs-class .hljs-title, .hljs-title.class_ { color: var(--hl-type); }
+.hljs-title, .hljs-title.function_                    { color: var(--hl-function); }
+.hljs-built_in                                        { color: var(--hl-builtin); }
+.hljs-attr, .hljs-attribute, .hljs-selector-attr      { color: var(--hl-attr); }
+.hljs-tag, .hljs-name                                 { color: var(--hl-tag); }
+.hljs-meta, .hljs-doctag                              { color: var(--hl-meta); }
+.hljs-symbol, .hljs-bullet, .hljs-section             { color: var(--hl-section); }
+.hljs-variable, .hljs-template-variable               { color: var(--hl-variable); }
+.hljs-params                                          { color: var(--fg); }
+.hljs-deletion                                        { color: var(--del-fg); }
+.hljs-addition                                        { color: var(--add-fg); }
+.hljs-strong                                          { font-weight: 700; }
+.hljs-emphasis                                        { font-style: italic; }
 
 * { box-sizing: border-box; }
 
@@ -751,8 +817,12 @@ select option.yanked {
   color: var(--fg);
 }
 
-.line.add .lc { background: var(--add-bg); color: var(--add-fg); }
-.line.del .lc { background: var(--del-bg); color: var(--del-fg); }
+/* Tint only the background on changed lines — forcing a color on the whole
+   cell would override syntax-highlight spans for tokens hljs didn't classify
+   (punctuation, plain identifiers, whitespace), painting the line a solid
+   green/red instead of letting the tokens keep their colors. */
+.line.add .lc { background: var(--add-bg); }
+.line.del .lc { background: var(--del-bg); }
 
 .line.hunk { grid-template-columns: 6.5rem 1fr; }
 .line.hunk .ln {

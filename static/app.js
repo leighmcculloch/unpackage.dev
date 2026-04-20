@@ -43,6 +43,107 @@ const state = {
 // Paths that default to collapsed — noisy but frequently regenerated files.
 const DEFAULT_COLLAPSED = new Set(["Cargo.lock"]);
 
+// Skip syntax highlighting for files above this raw-byte size, to avoid
+// spending seconds on massive lockfiles.
+const MAX_HIGHLIGHT_BYTES = 512 * 1024;
+
+const EXT_TO_LANG = {
+  rs: "rust",
+  toml: "ini", lock: "ini", ini: "ini",
+  md: "markdown", markdown: "markdown",
+  json: "json",
+  yaml: "yaml", yml: "yaml",
+  sh: "bash", bash: "bash", zsh: "bash",
+  py: "python",
+  js: "javascript", mjs: "javascript", cjs: "javascript", jsx: "javascript",
+  ts: "typescript", tsx: "typescript",
+  c: "c", h: "c",
+  cpp: "cpp", hpp: "cpp", cc: "cpp", cxx: "cpp", hh: "cpp",
+  go: "go",
+  java: "java",
+  kt: "kotlin", kts: "kotlin",
+  rb: "ruby",
+  php: "php",
+  swift: "swift",
+  scala: "scala",
+  cs: "csharp",
+  xml: "xml", html: "xml", htm: "xml", svg: "xml",
+  css: "css",
+  scss: "scss", sass: "scss",
+  less: "less",
+  sql: "sql",
+  pl: "perl", perl: "perl",
+  r: "r",
+  lua: "lua",
+  m: "objectivec", mm: "objectivec",
+  graphql: "graphql", gql: "graphql",
+};
+
+function detectLanguage(path) {
+  const name = (path.split("/").pop() || "").toLowerCase();
+  if (!name) return null;
+  if (name === "cargo.toml" || name === "cargo.lock") return "ini";
+  if (name === "dockerfile") return "dockerfile";
+  if (name === "makefile" || name === "gnumakefile") return "makefile";
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return null;
+  return EXT_TO_LANG[name.slice(dot + 1)] || null;
+}
+
+function highlightLines(text, lang) {
+  if (!lang || typeof hljs === "undefined") return null;
+  if (!hljs.getLanguage || !hljs.getLanguage(lang)) return null;
+  let html;
+  try {
+    html = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+  } catch {
+    return null;
+  }
+  return splitHighlightedByLine(html);
+}
+
+// Walk the highlight.js-produced HTML and split it by "\n" while keeping the
+// span stack balanced — open spans are closed at line ends and re-opened on
+// the next line so every line stands on its own and can be injected into a
+// row without breaking styling.
+function splitHighlightedByLine(html) {
+  const lines = [];
+  const stack = [];
+  let cur = "";
+  let i = 0;
+  while (i < html.length) {
+    const ch = html[i];
+    if (ch === "<") {
+      const end = html.indexOf(">", i);
+      if (end < 0) { cur += html.slice(i); break; }
+      const tag = html.slice(i, end + 1);
+      if (tag.startsWith("</")) {
+        if (stack.length) stack.pop();
+      } else if (!tag.endsWith("/>")) {
+        stack.push(tag);
+      }
+      cur += tag;
+      i = end + 1;
+    } else if (ch === "\n") {
+      for (let k = 0; k < stack.length; k++) cur += "</span>";
+      lines.push(cur);
+      cur = stack.join("");
+      i++;
+    } else {
+      cur += ch;
+      i++;
+    }
+  }
+  lines.push(cur);
+  return lines;
+}
+
+function lineHtml(f, side, lineNum, fallback) {
+  const hl = side === "new" ? f.rightHighlighted : f.leftHighlighted;
+  if (hl && hl[lineNum - 1] !== undefined) return hl[lineNum - 1];
+  return escapeHtml(fallback ?? "");
+}
+
 // ---------- URL hash ----------
 
 function writeHash() {
@@ -434,6 +535,17 @@ function buildFileList(left, right) {
           }
         }
       }
+      const lang = detectLanguage(path);
+      if (lang) {
+        if (data.leftText.length && data.leftText.length <= MAX_HIGHLIGHT_BYTES) {
+          data.leftHighlighted = highlightLines(data.leftText, lang);
+        }
+        if (data.rightText.length && data.rightText.length <= MAX_HIGHLIGHT_BYTES) {
+          data.rightHighlighted = status === "unchanged"
+            ? data.leftHighlighted
+            : highlightLines(data.rightText, lang);
+        }
+      }
     }
 
     state.files.set(id, data);
@@ -557,7 +669,7 @@ function renderDiffBody(f) {
   if (!hunks || !hunks.length) return "";
 
   // When fully expanded we never show gap expanders.
-  if (f.fullyExpanded) return hunks.map((h) => renderHunk(h)).join("");
+  if (f.fullyExpanded) return hunks.map((h) => renderHunk(f, h)).join("");
 
   const rightLines = f.rightText.split("\n");
   const leftLines = f.leftText.split("\n");
@@ -578,11 +690,11 @@ function renderDiffBody(f) {
 
     if (gapLen > 0) {
       if (expanded) {
-        out.push(renderGapLines(gapOldStart, gapNewStart, gapLen, rightLines));
+        out.push(renderGapLines(f, gapOldStart, gapNewStart, gapLen));
       }
-      out.push(renderHunk(h, { fileId: f.id, gapIdx: i, gapLen, expanded }));
+      out.push(renderHunk(f, h, { fileId: f.id, gapIdx: i, gapLen, expanded }));
     } else {
-      out.push(renderHunk(h));
+      out.push(renderHunk(f, h));
     }
   }
 
@@ -595,7 +707,7 @@ function renderDiffBody(f) {
     const tailIdx = hunks.length;
     const expanded = f.expandedGaps.has(tailIdx);
     if (expanded) {
-      out.push(renderGapLines(tailOldStart, tailNewStart, tailLen, rightLines));
+      out.push(renderGapLines(f, tailOldStart, tailNewStart, tailLen));
     }
     out.push(renderStandaloneGap(f.id, tailIdx, tailLen, expanded));
   }
@@ -609,7 +721,7 @@ function trimTrailingEmpty(arr) {
   return arr;
 }
 
-function renderHunk(h, expand) {
+function renderHunk(f, h, expand) {
   const out = [];
   const title = `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`;
   if (expand) {
@@ -636,13 +748,16 @@ function renderHunk(h, expand) {
     }
     const content = line.slice(1);
     if (line[0] === "+") {
-      out.push(`<div class="line add" data-new-line="${newNo}"><span class="ln"></span><span class="ln">${newNo}</span><span class="lc">+${escapeHtml(content)}</span></div>`);
+      const html = lineHtml(f, "new", newNo, content);
+      out.push(`<div class="line add" data-new-line="${newNo}"><span class="ln"></span><span class="ln">${newNo}</span><span class="lc">+${html}</span></div>`);
       newNo++;
     } else if (line[0] === "-") {
-      out.push(`<div class="line del" data-old-line="${oldNo}"><span class="ln">${oldNo}</span><span class="ln"></span><span class="lc">-${escapeHtml(content)}</span></div>`);
+      const html = lineHtml(f, "old", oldNo, content);
+      out.push(`<div class="line del" data-old-line="${oldNo}"><span class="ln">${oldNo}</span><span class="ln"></span><span class="lc">-${html}</span></div>`);
       oldNo++;
     } else {
-      out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
+      const html = lineHtml(f, "new", newNo, content);
+      out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${html}</span></div>`);
       oldNo++; newNo++;
     }
   }
@@ -655,20 +770,22 @@ function renderUnchangedBody(f) {
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     const n = i + 1;
+    const html = lineHtml(f, "new", n, lines[i]);
     out.push(
-      `<div class="line" data-old-line="${n}" data-new-line="${n}"><span class="ln">${n}</span><span class="ln">${n}</span><span class="lc"> ${escapeHtml(lines[i])}</span></div>`,
+      `<div class="line" data-old-line="${n}" data-new-line="${n}"><span class="ln">${n}</span><span class="ln">${n}</span><span class="lc"> ${html}</span></div>`,
     );
   }
   return out.join("");
 }
 
-function renderGapLines(oldStart, newStart, length, rightLines) {
+function renderGapLines(f, oldStart, newStart, length) {
+  const rightLines = f.rightText.split("\n");
   const out = [];
   for (let i = 0; i < length; i++) {
     const oldNo = oldStart + i;
     const newNo = newStart + i;
-    const content = rightLines[newNo - 1] ?? "";
-    out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${escapeHtml(content)}</span></div>`);
+    const html = lineHtml(f, "new", newNo, rightLines[newNo - 1]);
+    out.push(`<div class="line" data-old-line="${oldNo}" data-new-line="${newNo}"><span class="ln">${oldNo}</span><span class="ln">${newNo}</span><span class="lc"> ${html}</span></div>`);
   }
   return out.join("");
 }
