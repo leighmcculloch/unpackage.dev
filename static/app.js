@@ -7,13 +7,9 @@ const $ = (id) => document.getElementById(id);
 const searchInput    = $("search");
 const resultsEl      = $("results");
 const compareEl      = $("compare");
-const crateNameEl    = $("crate-name");
 const crateLinkEl    = $("crate-link");
 const leftSel        = $("left-version");
 const rightSel       = $("right-version");
-const viewSel        = $("view-version");
-const compareCard    = $("compare-card");
-const compareTabsEl  = $("compare-tabs");
 const statsEl        = $("stats");
 const diffEl         = $("diff");
 const toolbarEl      = $("toolbar");
@@ -43,7 +39,6 @@ const state = {
   filter: "changed",   // "changed" | "all"
   selectedFile: null,  // file path persisted in URL
   selection: null,     // { start: {side, line}, end: {side, line} }
-  mode: "compare",     // "compare" | "view" — tab-driven, independent of left/right equality
   registry: "crates.io", // "crates.io" | "npmjs.com" | ...
 };
 
@@ -382,9 +377,6 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null, pr
 
     state.right = byNum.has(preferredRight) ? preferredRight : fallbackRight;
     state.left = byNum.has(preferredLeft) ? preferredLeft : fallbackLeft;
-    // A URL like #crate/ver is a single-version view; anything else starts in
-    // compare mode, even if the two versions happen to match.
-    state.mode = (preferredLeft && preferredRight && preferredLeft === preferredRight) ? "view" : "compare";
 
     paintCompare();
     writeHash();
@@ -397,11 +389,12 @@ async function selectCrate(name, preferredLeft = null, preferredRight = null, pr
 
 function paintCompare() {
   compareEl.hidden = false;
-  crateNameEl.textContent = state.crate.name;
+  crateLinkEl.hidden = false;
   crateLinkEl.href = registryPackageUrl(state.registry, state.crate.name);
   crateLinkEl.textContent = `${state.registry} →`;
+  copyLinkBtn.hidden = false;
 
-  const opts = state.versions.map((v) => {
+  const versionOpts = state.versions.map((v) => {
     const date = typeof v.created_at === "string" ? v.created_at.slice(0, 10) : "";
     let label = v.num;
     if (date) label += `  ·  ${date}`;
@@ -409,33 +402,16 @@ function paintCompare() {
     const cls = v.yanked ? ' class="yanked"' : "";
     return `<option value="${escapeHtml(v.num)}"${cls}>${escapeHtml(label)}</option>`;
   }).join("");
-  leftSel.innerHTML = opts;
-  rightSel.innerHTML = opts;
-  viewSel.innerHTML = opts;
-  leftSel.value = state.left;
-  rightSel.value = state.right;
-  viewSel.value = state.right;
-  applyMode();
-  updateCompactSummary();
-}
 
-// Compare vs. view-source mode. Explicit — only changed by tab clicks or by
-// loading a URL, so picking same old/new in compare mode doesn't silently
-// flip the UI into view-source.
-function applyMode() {
-  compareCard.dataset.mode = state.mode;
-  compareTabsEl.querySelectorAll(".tab").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.mode === state.mode);
-  });
-  // Belt and braces: force visibility via inline styles so this works even if
-  // the [data-mode] CSS rule is stale in a browser cache.
-  compareCard.querySelectorAll(".versions.mode-compare").forEach((el) => {
-    el.style.display = state.mode === "compare" ? "" : "none";
-  });
-  compareCard.querySelectorAll(".versions.mode-view").forEach((el) => {
-    el.style.display = state.mode === "view" ? "" : "none";
-  });
-  if (state.mode === "view") viewSel.value = state.right;
+  // "None" on the left means: don't compare, just view the right-side source.
+  leftSel.innerHTML =
+    `<option value="">None (just view source)</option>` + versionOpts;
+  rightSel.innerHTML = versionOpts;
+
+  leftSel.value = state.left === state.right ? "" : state.left;
+  rightSel.value = state.right;
+
+  updateCompactSummary();
 }
 
 function updateCompactSummary() {
@@ -458,59 +434,19 @@ function updateCompactSummary() {
 }
 
 leftSel.addEventListener("change", async () => {
-  state.left = leftSel.value;
+  state.left = leftSel.value === "" ? state.right : leftSel.value;
   updateCompactSummary();
   writeHash();
   await loadDiff();
 });
+
 rightSel.addEventListener("change", async () => {
+  const wasViewSource = leftSel.value === "";
   state.right = rightSel.value;
+  if (wasViewSource) state.left = state.right;
   updateCompactSummary();
   writeHash();
   await loadDiff();
-});
-viewSel.addEventListener("change", async () => {
-  state.left = state.right = viewSel.value;
-  leftSel.value = state.left;
-  rightSel.value = state.right;
-  updateCompactSummary();
-  writeHash();
-  await loadDiff();
-});
-
-compareTabsEl.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".tab");
-  if (!btn) return;
-  const wanted = btn.dataset.mode;
-  if (wanted !== "view" && wanted !== "compare") return;
-
-  const before = { mode: state.mode, left: state.left, right: state.right };
-
-  if (wanted === "view") {
-    state.mode = "view";
-    state.left = state.right;
-    leftSel.value = state.left;
-  } else {
-    // Compare: keep the current "new" (state.right) and always set "old" to
-    // the version immediately prior to it.
-    state.mode = "compare";
-    const live = state.versions.filter((v) => !v.yanked);
-    const idx = live.findIndex((v) => v.num === state.right);
-    let newLeft = idx >= 0 ? live[idx + 1]?.num : undefined;
-    if (!newLeft) newLeft = live.find((v) => v.num !== state.right)?.num;
-    if (newLeft) {
-      state.left = newLeft;
-      leftSel.value = newLeft;
-    }
-  }
-
-  const changed = before.mode !== state.mode
-               || before.left !== state.left
-               || before.right !== state.right;
-  applyMode();
-  updateCompactSummary();
-  writeHash();
-  if (changed) await loadDiff();
 });
 
 // ---------- tarball fetch + parse (cached) ----------
@@ -789,9 +725,8 @@ function renderAll() {
     unchanged: items.filter((f) => f.status === "unchanged").length,
   };
 
-  statsEl.innerHTML = renderStats(counts);
+  statsEl.innerHTML = renderStats(counts, state.left === state.right);
   toolbarEl.hidden = false;
-  applyMode();
 
   const anyChanged = counts.added + counts.removed + counts.modified > 0;
   // If nothing changed (view source, or genuinely identical versions) default
@@ -818,12 +753,16 @@ function applyFilterToDiff() {
   });
 }
 
-function renderStats({ total, added, removed, modified, unchanged }) {
+function renderStats({ total, added, removed, modified, unchanged }, viewSource) {
   const chips = [`<span class="chip"><span class="n">${total}</span>&nbsp;files</span>`];
   if (added)     chips.push(`<span class="chip added"><span class="n">+${added}</span> added</span>`);
   if (removed)   chips.push(`<span class="chip removed"><span class="n">-${removed}</span> removed</span>`);
   if (modified)  chips.push(`<span class="chip modified"><span class="n">~${modified}</span> modified</span>`);
-  if (unchanged) chips.push(`<span class="chip"><span class="n">${unchanged}</span> unchanged</span>`);
+  // When we're just viewing source (not comparing), every file is trivially
+  // "unchanged" — that chip adds noise without conveying anything useful.
+  if (unchanged && !viewSource) {
+    chips.push(`<span class="chip"><span class="n">${unchanged}</span> unchanged</span>`);
+  }
   return chips.join("");
 }
 
@@ -1484,12 +1423,12 @@ window.addEventListener("hashchange", () => {
     if (parsed.file) applyFileNavigation();
     else applyHighlight();
   } else if (sameCrate) {
-    if (parsed.left) { state.left = parsed.left; leftSel.value = parsed.left; }
-    if (parsed.right) { state.right = parsed.right; rightSel.value = parsed.right; }
+    if (parsed.left) state.left = parsed.left;
+    if (parsed.right) state.right = parsed.right;
+    leftSel.value = state.left === state.right ? "" : state.left;
+    rightSel.value = state.right;
     state.selectedFile = parsed.file;
     state.selection = parsed.range;
-    state.mode = (parsed.left && parsed.right && parsed.left === parsed.right) ? "view" : "compare";
-    applyMode();
     loadDiff().then(() => { if (parsed.file) applyFileNavigation(); });
   } else {
     state.registry = parsed.registry;

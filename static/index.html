@@ -40,30 +40,21 @@
           </svg>
           <input id="search" type="text" placeholder="Search crates.io&hellip;" autocomplete="off" spellcheck="false" />
         </div>
+        <a id="crate-link" class="crate-link btn btn-ghost" target="_blank" rel="noopener" hidden>crates.io &rarr;</a>
+        <button id="copy-link" class="btn btn-ghost" type="button" title="Copy shareable link" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
+            <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/>
+          </svg>
+          <span class="label">Copy link</span>
+        </button>
       </div>
       <ul id="results" hidden></ul>
     </section>
 
     <section class="compare-wrap" hidden id="compare">
-      <div class="card" id="compare-card" data-mode="compare">
-        <div class="crate-title">
-          <span id="crate-name"></span>
-          <span class="title-sep">·</span>
-          <a id="crate-link" target="_blank" rel="noopener">crates.io &rarr;</a>
-          <div class="title-spacer"></div>
-          <button id="copy-link" class="btn btn-ghost" type="button" title="Copy shareable link">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/>
-              <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/>
-            </svg>
-            <span class="label">Copy link</span>
-          </button>
-        </div>
-        <div class="compare-tabs" id="compare-tabs" role="tablist">
-          <button class="tab active" data-mode="compare" type="button">Compare versions</button>
-          <button class="tab"        data-mode="view"    type="button">View source</button>
-        </div>
-        <div class="versions mode-compare">
+      <div class="card" id="compare-card">
+        <div class="versions">
           <label class="ver">
             <span>old</span>
             <select id="left-version"></select>
@@ -76,12 +67,6 @@
           <label class="ver">
             <span>new</span>
             <select id="right-version"></select>
-          </label>
-        </div>
-        <div class="versions mode-view">
-          <label class="ver">
-            <span>version</span>
-            <select id="view-version"></select>
           </label>
         </div>
       </div>
