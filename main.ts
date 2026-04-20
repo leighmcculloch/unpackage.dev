@@ -135,7 +135,7 @@ async function downloadNpm(name: string, version: string): Promise<Response> {
   });
 }
 
-// ---------- Go module proxy adapters (pkg.go.dev) ----------
+// ---------- Go module proxy adapters (proxy.golang.org) ----------
 
 // Go module paths and versions are escaped on the wire: every uppercase
 // letter X becomes "!x" to avoid case-insensitive filesystem ambiguity.
@@ -216,14 +216,14 @@ function handler(req: Request): Promise<Response> | Response {
       const per = url.searchParams.get("per_page") ?? "10";
       if (registry === "crates.io") return searchCratesIo(q, per);
       if (registry === "npmjs.com") return searchNpm(q, per);
-      if (registry === "pkg.go.dev") return searchGo(q);
+      if (registry === "proxy.golang.org") return searchGo(q);
       return new Response("unknown registry", { status: 400 });
     }
     if (action.startsWith("package/")) {
       const name = decodeURIComponent(action.slice("package/".length));
       if (registry === "crates.io") return packageCratesIo(name);
       if (registry === "npmjs.com") return packageNpm(name);
-      if (registry === "pkg.go.dev") return packageGo(name);
+      if (registry === "proxy.golang.org") return packageGo(name);
       return new Response("unknown registry", { status: 400 });
     }
     if (action.startsWith("download/")) {
@@ -234,7 +234,7 @@ function handler(req: Request): Promise<Response> | Response {
       const version = decodeURIComponent(rest2.slice(lastSlash + 1));
       if (registry === "crates.io") return downloadCratesIo(name, version);
       if (registry === "npmjs.com") return downloadNpm(name, version);
-      if (registry === "pkg.go.dev") return downloadGo(name, version);
+      if (registry === "proxy.golang.org") return downloadGo(name, version);
       return new Response("unknown registry", { status: 400 });
     }
     return new Response("not found", { status: 404 });

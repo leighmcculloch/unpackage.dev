@@ -1,8 +1,8 @@
 # unpackage.dev
 
 A small [Deno] web app that lets you search [crates.io], [npmjs.com] and
-[pkg.go.dev], and view a folder-style git diff between any two published
-versions of a package.
+[proxy.golang.org][pkg.go.dev], and view a folder-style git diff between any
+two published versions of a package.
 
 Live at <https://unpackage.dev/>.
 
@@ -32,7 +32,7 @@ the browser doesn't trip over CORS or missing `User-Agent` requirements:
 - `GET /api/registry/{registry}/package/{name}` &rarr; package metadata and versions
 - `GET /api/registry/{registry}/download/{name}/{version}` &rarr; the archive
 
-`{registry}` is one of `crates.io`, `npmjs.com`, or `pkg.go.dev`.
+`{registry}` is one of `crates.io`, `npmjs.com`, or `proxy.golang.org`.
 
 Everything else happens in the browser:
 

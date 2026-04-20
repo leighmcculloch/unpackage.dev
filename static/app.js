@@ -42,7 +42,7 @@ const state = {
   registry: "crates.io", // "crates.io" | "npmjs.com" | ...
 };
 
-const KNOWN_REGISTRIES = new Set(["crates.io", "npmjs.com", "pkg.go.dev"]);
+const KNOWN_REGISTRIES = new Set(["crates.io", "npmjs.com", "proxy.golang.org"]);
 
 // Go module path escaping (uppercase → "!" + lowercase). Used to line up the
 // module prefix inside a module zip with the escaped form in the archive.
@@ -64,7 +64,7 @@ function apiDownloadUrl(registry, name, version) {
 
 function archiveExt(registry) {
   if (registry === "npmjs.com") return ".tgz";
-  if (registry === "pkg.go.dev") return ".zip";
+  if (registry === "proxy.golang.org") return ".zip";
   return ".crate";
 }
 
@@ -74,7 +74,9 @@ function safeFilename(name) {
 
 function registryPackageUrl(registry, name) {
   if (registry === "npmjs.com") return `https://www.npmjs.com/package/${name}`;
-  if (registry === "pkg.go.dev") return `https://pkg.go.dev/${name}`;
+  // The archive comes from proxy.golang.org, but pkg.go.dev is where users
+  // read Go module docs — keep the "open on registry" link pointing there.
+  if (registry === "proxy.golang.org") return `https://pkg.go.dev/${name}`;
   return `https://crates.io/crates/${name}`;
 }
 
@@ -495,7 +497,7 @@ function parseZip(buf) {
 }
 
 function stripArchivePrefix(files, registry, name, version) {
-  if (registry === "pkg.go.dev") {
+  if (registry === "proxy.golang.org") {
     const prefix = `${goEscape(name)}@${version}/`;
     const out = {};
     for (const [p, b] of Object.entries(files)) {
@@ -518,7 +520,7 @@ async function fetchCrateFiles(name, version) {
     if (cache) { try { await cache.put(url, response.clone()); } catch { /* ignore */ } }
   }
   const buf = new Uint8Array(await response.arrayBuffer());
-  if (state.registry === "pkg.go.dev") return parseZip(buf);
+  if (state.registry === "proxy.golang.org") return parseZip(buf);
   return parseTar(pako.inflate(buf));
 }
 
