@@ -1,4 +1,4 @@
-import { serveDir } from "jsr:@std/http@1/file-server";
+import { serveDir } from "@std/http/file-server";
 
 const USER_AGENT = "unpackage.dev (https://github.com/leighmcculloch)";
 
