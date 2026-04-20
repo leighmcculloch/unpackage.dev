@@ -444,11 +444,13 @@ function updateCompactSummary() {
     compactSummaryEl.innerHTML = "";
     return;
   }
+  const reg = `<span class="cs-registry">${escapeHtml(state.registry)}</span>`;
   const name = `<span class="cs-name">${escapeHtml(state.crate.name)}</span>`;
   if (state.left === state.right) {
-    compactSummaryEl.innerHTML = `${name}<span class="cs-ver">${escapeHtml(state.right)}</span>`;
+    compactSummaryEl.innerHTML =
+      `${reg}${name}<span class="cs-ver">${escapeHtml(state.right)}</span>`;
   } else {
-    compactSummaryEl.innerHTML = name +
+    compactSummaryEl.innerHTML = reg + name +
       `<span class="cs-ver">${escapeHtml(state.left)}</span>` +
       `<span class="cs-arrow">→</span>` +
       `<span class="cs-ver">${escapeHtml(state.right)}</span>`;
