@@ -13,7 +13,6 @@ const rightSel       = $("right-version");
 const statsEl        = $("stats");
 const diffEl         = $("diff");
 const toolbarEl      = $("toolbar");
-const copyLinkBtn    = $("copy-link");
 const expandAllBtn   = $("expand-all");
 const collapseAllBtn = $("collapse-all");
 const sidebarEl      = $("sidebar");
