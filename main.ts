@@ -371,6 +371,95 @@ async function downloadCran(
   });
 }
 
+// ---------- Julia adapters (JuliaRegistries/General → GitHub) ----------
+
+// Packages in the General registry are sharded under their uppercase first
+// letter: `E/Example/`. Package.toml holds the repo URL, Versions.toml lists
+// release versions.
+function juliaRegistryDir(name: string): string {
+  const letter = name[0]?.toUpperCase() ?? "";
+  return `${letter}/${name}`;
+}
+
+function searchJulia(q: string): Response {
+  // No public Julia search API — echo input.
+  const q2 = q.trim();
+  const crates = q2 ? [{ name: q2, description: "", max_version: "" }] : [];
+  return new Response(JSON.stringify({ crates }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=60",
+    },
+  });
+}
+
+async function packageJulia(name: string): Promise<Response> {
+  const path = juliaRegistryDir(name);
+  const u =
+    `https://raw.githubusercontent.com/JuliaRegistries/General/master/${path}/Versions.toml`;
+  const r = await fetch(u);
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const text = await r.text();
+  // Versions.toml has sections like `["1.2.3"]\ngit-tree-sha1 = "..."` — grab
+  // the quoted header of each section.
+  const nums: string[] = [];
+  const re = /^\["([^"]+)"\]/gm;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) nums.push(match[1]);
+  nums.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const versions = nums.map((num) => ({ num, yanked: false, created_at: "" }));
+  return new Response(
+    JSON.stringify({
+      crate: { name, description: "" },
+      versions,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+      },
+    },
+  );
+}
+
+async function downloadJulia(
+  name: string,
+  version: string,
+): Promise<Response> {
+  const path = juliaRegistryDir(name);
+  // Package.toml: `repo = "https://github.com/..."` — parse that and fetch
+  // the corresponding GitHub tag tarball.
+  const pr = await fetch(
+    `https://raw.githubusercontent.com/JuliaRegistries/General/master/${path}/Package.toml`,
+  );
+  if (!pr.ok) {
+    return new Response(`upstream error: ${pr.status}`, { status: pr.status });
+  }
+  const pkgToml = await pr.text();
+  const repoMatch = pkgToml.match(/^repo\s*=\s*"([^"]+)"/m);
+  if (!repoMatch) {
+    return new Response("no repo in Package.toml", { status: 404 });
+  }
+  let repo = repoMatch[1].replace(/\/+$/, "");
+  if (repo.endsWith(".git")) repo = repo.slice(0, -4);
+  const tarUrl = `${repo}/archive/refs/tags/v${
+    encodeURIComponent(version)
+  }.tar.gz`;
+  const r = await fetch(tarUrl, { redirect: "follow" });
+  if (!r.ok || !r.body) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  return new Response(r.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 // ---------- RubyGems adapters (rubygems.org) ----------
 
 async function searchRubyGems(q: string, per: string): Promise<Response> {
@@ -847,6 +936,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "proxy.golang.org") return searchGo(q);
       if (registry === "jsr.io") return searchJsr(q, per);
       if (registry === "cran.r-project.org") return searchCran(q);
+      if (registry === "juliahub.com") return searchJulia(q);
       if (registry === "rubygems.org") return searchRubyGems(q, per);
       if (registry === "pypi.org") return searchPypi(q);
       if (registry === "nuget.org") return searchNuget(q, per);
@@ -861,6 +951,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "proxy.golang.org") return packageGo(name);
       if (registry === "jsr.io") return packageJsr(name);
       if (registry === "cran.r-project.org") return packageCran(name);
+      if (registry === "juliahub.com") return packageJulia(name);
       if (registry === "rubygems.org") return packageRubyGems(name);
       if (registry === "pypi.org") return packagePypi(name);
       if (registry === "nuget.org") return packageNuget(name);
@@ -879,6 +970,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "proxy.golang.org") return downloadGo(name, version);
       if (registry === "jsr.io") return downloadJsr(name, version);
       if (registry === "cran.r-project.org") return downloadCran(name, version);
+      if (registry === "juliahub.com") return downloadJulia(name, version);
       if (registry === "rubygems.org") return downloadRubyGems(name, version);
       if (registry === "pypi.org") return downloadPypi(name, version);
       if (registry === "nuget.org") return downloadNuget(name, version);

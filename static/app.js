@@ -52,6 +52,7 @@ const KNOWN_REGISTRIES = new Set([
   "hex.pm",
   "pub.dev",
   "cran.r-project.org",
+  "juliahub.com",
 ]);
 
 // Go module path escaping (uppercase → "!" + lowercase). Used to line up the
@@ -84,6 +85,7 @@ function archiveExt(registry) {
     case "hex.pm":            return ".tar";
     case "pub.dev":           return ".tar.gz";
     case "cran.r-project.org": return ".tar.gz";
+    case "juliahub.com":      return ".tar.gz";
     default:                  return ".archive";
   }
 }
@@ -118,6 +120,7 @@ function registryPackageUrl(registry, name) {
     case "hex.pm":            return `https://hex.pm/packages/${name}`;
     case "pub.dev":           return `https://pub.dev/packages/${name}`;
     case "cran.r-project.org": return `https://cran.r-project.org/package=${name}`;
+    case "juliahub.com":      return `https://juliahub.com/ui/Packages/General/${name}`;
     default:                  return "#";
   }
 }
