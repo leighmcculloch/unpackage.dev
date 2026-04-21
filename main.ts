@@ -590,12 +590,79 @@ async function downloadPub(name: string, version: string): Promise<Response> {
   });
 }
 
+// ---------- abuse mitigation ----------
+
+// Deno Deploy sets this. Locally it's unset, so abuse checks are skipped to
+// keep `deno task start` and CI curl-tests friction-free.
+const IS_DEPLOY = !!Deno.env.get("DENO_DEPLOYMENT_ID");
+
+const RATE_LIMIT = 120; // requests per window, per IP
+const RATE_WINDOW_MS = 60_000;
+const hits = new Map<string, number[]>();
+
+function clientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for");
+  return xff ? xff.split(",")[0].trim() : "local";
+}
+
+// True if the request was made by the website itself (same-origin Origin or
+// Referer). Non-browser clients with no such headers are rejected when
+// deployed so the proxy can't be turned into a general-purpose package
+// mirror.
+function sameOrigin(req: Request): boolean {
+  const url = new URL(req.url);
+  const self = `${url.protocol}//${url.host}`;
+  const origin = req.headers.get("Origin");
+  if (origin) return origin === self;
+  const referer = req.headers.get("Referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin === self;
+    } catch {
+      return false;
+    }
+  }
+  return !IS_DEPLOY;
+}
+
+function rateLimited(req: Request): boolean {
+  if (!IS_DEPLOY) return false;
+  const ip = clientIp(req);
+  const now = Date.now();
+  let times = hits.get(ip) ?? [];
+  times = times.filter((t) => now - t < RATE_WINDOW_MS);
+  if (times.length >= RATE_LIMIT) {
+    hits.set(ip, times);
+    return true;
+  }
+  times.push(now);
+  hits.set(ip, times);
+  // Periodic prune so the Map doesn't grow without bound under attack.
+  if (hits.size > 5000) {
+    for (const [key, arr] of hits) {
+      const kept = arr.filter((t) => now - t < RATE_WINDOW_MS);
+      if (kept.length) hits.set(key, kept);
+      else hits.delete(key);
+    }
+  }
+  return false;
+}
+
 // ---------- router ----------
 
 function handler(req: Request): Promise<Response> | Response {
   const url = new URL(req.url);
 
   if (url.pathname.startsWith("/api/registry/")) {
+    if (!sameOrigin(req)) {
+      return new Response("forbidden", { status: 403 });
+    }
+    if (rateLimited(req)) {
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(RATE_WINDOW_MS / 1000)) },
+      });
+    }
     const rest = url.pathname.slice("/api/registry/".length);
     const slash = rest.indexOf("/");
     const registry = slash < 0 ? rest : rest.slice(0, slash);
