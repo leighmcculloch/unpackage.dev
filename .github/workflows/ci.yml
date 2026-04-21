@@ -100,3 +100,28 @@ jobs:
           curl -sf "http://localhost:8000/api/registry/pub.dev/package/http" | grep -q '"versions"'
           curl -sfI "http://localhost:8000/api/registry/pub.dev/download/http/1.1.0" | grep -qi '^HTTP/.* 200'
           echo "::endgroup::"
+
+          echo "::group::jsr.io proxy"
+          curl -sf "http://localhost:8000/api/registry/jsr.io/package/@std/http" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/jsr.io/download/@std/http/1.0.25" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::cran (r) proxy"
+          curl -sf "http://localhost:8000/api/registry/cran.r-project.org/package/ggplot2" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/cran.r-project.org/download/ggplot2/3.4.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::julia proxy"
+          curl -sf "http://localhost:8000/api/registry/juliahub.com/package/Example" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/juliahub.com/download/Example/0.5.3" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::packagist proxy"
+          curl -sf "http://localhost:8000/api/registry/packagist.org/package/symfony/console" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/packagist.org/download/symfony/console/v6.3.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"
+
+          echo "::group::maven central proxy"
+          curl -sf "http://localhost:8000/api/registry/maven.org/package/org.apache.commons/commons-lang3" | grep -q '"versions"'
+          curl -sfI "http://localhost:8000/api/registry/maven.org/download/org.apache.commons/commons-lang3/3.12.0" | grep -qi '^HTTP/.* 200'
+          echo "::endgroup::"

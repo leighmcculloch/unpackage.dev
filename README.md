@@ -36,13 +36,18 @@ selected line ranges — for every supported ecosystem.
 | Language | Registry |
 | --- | --- |
 | Rust | [crates.io] |
-| JavaScript / TypeScript | [npmjs.com] |
+| JavaScript | [npmjs.com] |
+| TypeScript / Deno | [jsr.io] |
 | Go | [proxy.golang.org] (docs on [pkg.go.dev]) |
 | Ruby | [rubygems.org] |
 | Python | [pypi.org] |
 | .NET | [nuget.org] |
 | Elixir / Erlang | [hex.pm] |
 | Dart | [pub.dev] |
+| R | [CRAN][cran] |
+| Julia | [juliahub.com] (archives via [JuliaRegistries/General][julia-general] and GitHub) |
+| PHP | [packagist.org] |
+| Java | Maven Central ([search.maven.org]) |
 
 Want another ecosystem? [Open an issue][issues] — happy to add more.
 
@@ -81,8 +86,10 @@ shape:
 - `GET /api/registry/{registry}/package/{name}`
 - `GET /api/registry/{registry}/download/{name}/{version}`
 
-`{registry}` is one of `crates.io`, `npmjs.com`, `proxy.golang.org`,
-`rubygems.org`, `pypi.org`, `nuget.org`, `hex.pm`, or `pub.dev`.
+`{registry}` is one of `crates.io`, `npmjs.com`, `jsr.io`,
+`proxy.golang.org`, `rubygems.org`, `pypi.org`, `nuget.org`, `hex.pm`,
+`pub.dev`, `cran.r-project.org`, `juliahub.com`, `packagist.org`, or
+`maven.org`.
 
 Everything else happens in the browser:
 
@@ -115,6 +122,7 @@ mirror the pattern, and open a PR.
 [issues]: https://github.com/leighmcculloch/unpackage.dev/issues
 [crates.io]: https://crates.io
 [npmjs.com]: https://www.npmjs.com
+[jsr.io]: https://jsr.io
 [proxy.golang.org]: https://proxy.golang.org
 [pkg.go.dev]: https://pkg.go.dev
 [rubygems.org]: https://rubygems.org
@@ -122,3 +130,8 @@ mirror the pattern, and open a PR.
 [nuget.org]: https://www.nuget.org
 [hex.pm]: https://hex.pm
 [pub.dev]: https://pub.dev
+[cran]: https://cran.r-project.org
+[juliahub.com]: https://juliahub.com
+[julia-general]: https://github.com/JuliaRegistries/General
+[packagist.org]: https://packagist.org
+[search.maven.org]: https://search.maven.org
