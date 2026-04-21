@@ -430,7 +430,6 @@ function paintCompare() {
   crateLinkEl.hidden = false;
   crateLinkEl.href = registryPackageUrl(state.registry, state.crate.name);
   crateLinkEl.textContent = `${state.registry} →`;
-  copyLinkBtn.hidden = false;
 
   const versionOpts = state.versions.map((v) => {
     const date = typeof v.created_at === "string" ? v.created_at.slice(0, 10) : "";
@@ -1348,20 +1347,6 @@ sidebarEl.addEventListener("click", (e) => {
 });
 
 // ---------- toolbar actions ----------
-
-copyLinkBtn.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(location.href);
-    const label = copyLinkBtn.querySelector(".label");
-    const prev = label ? label.textContent : null;
-    copyLinkBtn.classList.add("copied");
-    if (label) label.textContent = "Copied";
-    setTimeout(() => {
-      copyLinkBtn.classList.remove("copied");
-      if (label && prev) label.textContent = prev;
-    }, 1200);
-  } catch { /* insecure context */ }
-});
 
 expandAllBtn.addEventListener("click", () => {
   diffEl.querySelectorAll(".file").forEach((el) => {

@@ -581,7 +581,6 @@ select option.yanked {
   border-color: transparent;
 }
 
-.btn.copied { color: var(--add-strong); }
 
 /* ---------- toolbar ---------- */
 
