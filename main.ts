@@ -298,6 +298,79 @@ async function downloadJsr(name: string, version: string): Promise<Response> {
   });
 }
 
+// ---------- CRAN adapters (cran.r-project.org — R) ----------
+
+function searchCran(q: string): Response {
+  // CRAN doesn't expose a public JSON search API — echo the input so the
+  // user can type a full package name and press enter.
+  const q2 = q.trim();
+  const crates = q2 ? [{ name: q2, description: "", max_version: "" }] : [];
+  return new Response(JSON.stringify({ crates }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=60",
+    },
+  });
+}
+
+async function packageCran(name: string): Promise<Response> {
+  const u = `https://crandb.r-pkg.org/${encodeURIComponent(name)}/all`;
+  const r = await fetch(u, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  // deno-lint-ignore no-explicit-any
+  const vs: Record<string, any> = data.versions ?? {};
+  const versions = Object.keys(vs).map((num) => ({
+    num,
+    yanked: false,
+    created_at: vs[num]?.["Date/Publication"] ?? vs[num]?.date ?? "",
+  }));
+  versions.sort((a, b) =>
+    (b.created_at || "").localeCompare(a.created_at || "")
+  );
+  return new Response(
+    JSON.stringify({
+      crate: { name, description: data.Title ?? "" },
+      versions,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+      },
+    },
+  );
+}
+
+async function downloadCran(
+  name: string,
+  version: string,
+): Promise<Response> {
+  // Current version lives in src/contrib; older versions move to Archive/.
+  const encName = encodeURIComponent(name);
+  const encVer = encodeURIComponent(version);
+  const current =
+    `https://cran.r-project.org/src/contrib/${encName}_${encVer}.tar.gz`;
+  let r = await fetch(current, { redirect: "follow" });
+  if (r.status === 404) {
+    const archive =
+      `https://cran.r-project.org/src/contrib/Archive/${encName}/${encName}_${encVer}.tar.gz`;
+    r = await fetch(archive, { redirect: "follow" });
+  }
+  if (!r.ok || !r.body) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  return new Response(r.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 // ---------- RubyGems adapters (rubygems.org) ----------
 
 async function searchRubyGems(q: string, per: string): Promise<Response> {
@@ -773,6 +846,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "npmjs.com") return searchNpm(q, per);
       if (registry === "proxy.golang.org") return searchGo(q);
       if (registry === "jsr.io") return searchJsr(q, per);
+      if (registry === "cran.r-project.org") return searchCran(q);
       if (registry === "rubygems.org") return searchRubyGems(q, per);
       if (registry === "pypi.org") return searchPypi(q);
       if (registry === "nuget.org") return searchNuget(q, per);
@@ -786,6 +860,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "npmjs.com") return packageNpm(name);
       if (registry === "proxy.golang.org") return packageGo(name);
       if (registry === "jsr.io") return packageJsr(name);
+      if (registry === "cran.r-project.org") return packageCran(name);
       if (registry === "rubygems.org") return packageRubyGems(name);
       if (registry === "pypi.org") return packagePypi(name);
       if (registry === "nuget.org") return packageNuget(name);
@@ -803,6 +878,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "npmjs.com") return downloadNpm(name, version);
       if (registry === "proxy.golang.org") return downloadGo(name, version);
       if (registry === "jsr.io") return downloadJsr(name, version);
+      if (registry === "cran.r-project.org") return downloadCran(name, version);
       if (registry === "rubygems.org") return downloadRubyGems(name, version);
       if (registry === "pypi.org") return downloadPypi(name, version);
       if (registry === "nuget.org") return downloadNuget(name, version);
