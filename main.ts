@@ -271,11 +271,21 @@ async function packageJsr(name: string): Promise<Response> {
 }
 
 async function downloadJsr(name: string, version: string): Promise<Response> {
+  // JSR's tarball URL is registry-versioned (e.g. ".../~/11/..."), so we
+  // can't build it from name + version alone — look it up in metadata.
   const npmName = jsrNpmName(name);
-  const lastSlash = npmName.lastIndexOf("/");
-  const unscoped = lastSlash >= 0 ? npmName.slice(lastSlash + 1) : npmName;
-  const u = `https://npm.jsr.io/${npmName}/-/${unscoped}-${version}.tgz`;
-  const r = await fetch(u, { redirect: "follow" });
+  const mr = await fetch(`https://npm.jsr.io/${npmName}`, {
+    headers: { "Accept": "application/json" },
+  });
+  if (!mr.ok) {
+    return new Response(`upstream error: ${mr.status}`, { status: mr.status });
+  }
+  const meta = await mr.json();
+  const tarball = meta.versions?.[version]?.dist?.tarball;
+  if (!tarball) {
+    return new Response(`unknown version: ${name}@${version}`, { status: 404 });
+  }
+  const r = await fetch(tarball, { redirect: "follow" });
   if (!r.ok || !r.body) {
     return new Response(`upstream error: ${r.status}`, { status: r.status });
   }
