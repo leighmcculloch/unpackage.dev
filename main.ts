@@ -200,6 +200,94 @@ async function downloadGo(name: string, version: string): Promise<Response> {
   });
 }
 
+// ---------- JSR adapters (jsr.io) ----------
+
+// JSR package names are always scoped "@scope/name". The npm compatibility
+// mirror (npm.jsr.io) collapses the scope separator to a double underscore:
+// @scope/name → @jsr/scope__name.
+function jsrNpmName(name: string): string {
+  if (!name.startsWith("@")) return name;
+  const slash = name.indexOf("/");
+  if (slash < 0) return name;
+  return `@jsr/${name.slice(1, slash)}__${name.slice(slash + 1)}`;
+}
+
+async function searchJsr(q: string, per: string): Promise<Response> {
+  const u = `https://api.jsr.io/packages?query=${encodeURIComponent(q)}&limit=${
+    encodeURIComponent(per)
+  }`;
+  const r = await fetch(u, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  const crates = Array.isArray(data.items)
+    // deno-lint-ignore no-explicit-any
+    ? data.items.map((p: any) => ({
+      name: `@${p.scope}/${p.name}`,
+      description: p.description ?? "",
+      max_version: p.latestVersion ?? "",
+    }))
+    : [];
+  return new Response(JSON.stringify({ crates }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+async function packageJsr(name: string): Promise<Response> {
+  const npmName = jsrNpmName(name);
+  const r = await fetch(`https://npm.jsr.io/${npmName}`, {
+    headers: { "Accept": "application/json" },
+  });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  const time: Record<string, string> = data.time ?? {};
+  const nums = Object.keys(data.versions ?? {});
+  const versions = nums.map((num) => ({
+    num,
+    yanked: false,
+    created_at: time[num] ?? "",
+  }));
+  versions.sort((a, b) =>
+    (b.created_at || "").localeCompare(a.created_at || "")
+  );
+  return new Response(
+    JSON.stringify({
+      crate: { name, description: data.description ?? "" },
+      versions,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+      },
+    },
+  );
+}
+
+async function downloadJsr(name: string, version: string): Promise<Response> {
+  const npmName = jsrNpmName(name);
+  const lastSlash = npmName.lastIndexOf("/");
+  const unscoped = lastSlash >= 0 ? npmName.slice(lastSlash + 1) : npmName;
+  const u = `https://npm.jsr.io/${npmName}/-/${unscoped}-${version}.tgz`;
+  const r = await fetch(u, { redirect: "follow" });
+  if (!r.ok || !r.body) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  return new Response(r.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 // ---------- RubyGems adapters (rubygems.org) ----------
 
 async function searchRubyGems(q: string, per: string): Promise<Response> {
@@ -674,6 +762,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "crates.io") return searchCratesIo(q, per);
       if (registry === "npmjs.com") return searchNpm(q, per);
       if (registry === "proxy.golang.org") return searchGo(q);
+      if (registry === "jsr.io") return searchJsr(q, per);
       if (registry === "rubygems.org") return searchRubyGems(q, per);
       if (registry === "pypi.org") return searchPypi(q);
       if (registry === "nuget.org") return searchNuget(q, per);
@@ -686,6 +775,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "crates.io") return packageCratesIo(name);
       if (registry === "npmjs.com") return packageNpm(name);
       if (registry === "proxy.golang.org") return packageGo(name);
+      if (registry === "jsr.io") return packageJsr(name);
       if (registry === "rubygems.org") return packageRubyGems(name);
       if (registry === "pypi.org") return packagePypi(name);
       if (registry === "nuget.org") return packageNuget(name);
@@ -702,6 +792,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "crates.io") return downloadCratesIo(name, version);
       if (registry === "npmjs.com") return downloadNpm(name, version);
       if (registry === "proxy.golang.org") return downloadGo(name, version);
+      if (registry === "jsr.io") return downloadJsr(name, version);
       if (registry === "rubygems.org") return downloadRubyGems(name, version);
       if (registry === "pypi.org") return downloadPypi(name, version);
       if (registry === "nuget.org") return downloadNuget(name, version);

@@ -44,6 +44,7 @@ const state = {
 const KNOWN_REGISTRIES = new Set([
   "crates.io",
   "npmjs.com",
+  "jsr.io",
   "proxy.golang.org",
   "rubygems.org",
   "pypi.org",
@@ -74,6 +75,7 @@ function archiveExt(registry) {
   switch (registry) {
     case "crates.io":         return ".crate";
     case "npmjs.com":         return ".tgz";
+    case "jsr.io":            return ".tgz";
     case "proxy.golang.org":  return ".zip";
     case "rubygems.org":      return ".gem";
     case "pypi.org":          return ".tar.gz";
@@ -104,6 +106,7 @@ function registryPackageUrl(registry, name) {
   switch (registry) {
     case "crates.io":         return `https://crates.io/crates/${name}`;
     case "npmjs.com":         return `https://www.npmjs.com/package/${name}`;
+    case "jsr.io":            return `https://jsr.io/${name}`;
     // Archives come from proxy.golang.org; pkg.go.dev is where users read Go
     // module docs — point the "open on registry" link there.
     case "proxy.golang.org":  return `https://pkg.go.dev/${name}`;
