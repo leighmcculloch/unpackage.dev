@@ -53,6 +53,7 @@ const KNOWN_REGISTRIES = new Set([
   "pub.dev",
   "cran.r-project.org",
   "juliahub.com",
+  "packagist.org",
 ]);
 
 // Go module path escaping (uppercase → "!" + lowercase). Used to line up the
@@ -86,6 +87,7 @@ function archiveExt(registry) {
     case "pub.dev":           return ".tar.gz";
     case "cran.r-project.org": return ".tar.gz";
     case "juliahub.com":      return ".tar.gz";
+    case "packagist.org":     return ".zip";
     default:                  return ".archive";
   }
 }
@@ -95,6 +97,7 @@ function archiveFormat(registry) {
   switch (registry) {
     case "proxy.golang.org":
     case "nuget.org":
+    case "packagist.org":
       return "zip";
     case "rubygems.org": return "gem";  // plain tar with data.tar.gz inside
     case "hex.pm":       return "hex";  // plain tar with contents.tar.gz inside
@@ -121,6 +124,7 @@ function registryPackageUrl(registry, name) {
     case "pub.dev":           return `https://pub.dev/packages/${name}`;
     case "cran.r-project.org": return `https://cran.r-project.org/package=${name}`;
     case "juliahub.com":      return `https://juliahub.com/ui/Packages/General/${name}`;
+    case "packagist.org":     return `https://packagist.org/packages/${name}`;
     default:                  return "#";
   }
 }

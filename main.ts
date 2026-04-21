@@ -460,6 +460,101 @@ async function downloadJulia(
   });
 }
 
+// ---------- Packagist adapters (packagist.org — PHP / Composer) ----------
+
+async function searchPackagist(q: string, per: string): Promise<Response> {
+  const u = `https://packagist.org/search.json?q=${
+    encodeURIComponent(q)
+  }&per_page=${encodeURIComponent(per)}`;
+  const r = await fetch(u, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  const crates = Array.isArray(data.results)
+    // deno-lint-ignore no-explicit-any
+    ? data.results.map((p: any) => ({
+      name: p.name ?? "",
+      description: p.description ?? "",
+      max_version: "",
+    }))
+    : [];
+  return new Response(JSON.stringify({ crates }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+async function packagePackagist(name: string): Promise<Response> {
+  const u = `https://repo.packagist.org/p2/${name}.json`;
+  const r = await fetch(u, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  const list = data.packages?.[name] ?? [];
+  const versions: { num: string; yanked: boolean; created_at: string }[] = Array
+      .isArray(list)
+    // deno-lint-ignore no-explicit-any
+    ? list.map((v: any) => ({
+      num: v.version ?? "",
+      yanked: false,
+      created_at: v.time ?? "",
+    }))
+    : [];
+  versions.sort((a, b) =>
+    (b.created_at || "").localeCompare(a.created_at || "")
+  );
+  // deno-lint-ignore no-explicit-any
+  const description = (list[0] as any)?.description ?? "";
+  return new Response(
+    JSON.stringify({
+      crate: { name, description },
+      versions,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+      },
+    },
+  );
+}
+
+async function downloadPackagist(
+  name: string,
+  version: string,
+): Promise<Response> {
+  const mr = await fetch(`https://repo.packagist.org/p2/${name}.json`, {
+    headers: { "Accept": "application/json" },
+  });
+  if (!mr.ok) {
+    return new Response(`upstream error: ${mr.status}`, { status: mr.status });
+  }
+  const meta = await mr.json();
+  const list = meta.packages?.[name] ?? [];
+  // deno-lint-ignore no-explicit-any
+  const found = list.find((v: any) => v.version === version);
+  if (!found?.dist?.url) {
+    return new Response(`no distribution for ${name} ${version}`, {
+      status: 404,
+    });
+  }
+  const r = await fetch(found.dist.url, { redirect: "follow" });
+  if (!r.ok || !r.body) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  return new Response(r.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 // ---------- RubyGems adapters (rubygems.org) ----------
 
 async function searchRubyGems(q: string, per: string): Promise<Response> {
@@ -937,6 +1032,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "jsr.io") return searchJsr(q, per);
       if (registry === "cran.r-project.org") return searchCran(q);
       if (registry === "juliahub.com") return searchJulia(q);
+      if (registry === "packagist.org") return searchPackagist(q, per);
       if (registry === "rubygems.org") return searchRubyGems(q, per);
       if (registry === "pypi.org") return searchPypi(q);
       if (registry === "nuget.org") return searchNuget(q, per);
@@ -952,6 +1048,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "jsr.io") return packageJsr(name);
       if (registry === "cran.r-project.org") return packageCran(name);
       if (registry === "juliahub.com") return packageJulia(name);
+      if (registry === "packagist.org") return packagePackagist(name);
       if (registry === "rubygems.org") return packageRubyGems(name);
       if (registry === "pypi.org") return packagePypi(name);
       if (registry === "nuget.org") return packageNuget(name);
@@ -971,6 +1068,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "jsr.io") return downloadJsr(name, version);
       if (registry === "cran.r-project.org") return downloadCran(name, version);
       if (registry === "juliahub.com") return downloadJulia(name, version);
+      if (registry === "packagist.org") return downloadPackagist(name, version);
       if (registry === "rubygems.org") return downloadRubyGems(name, version);
       if (registry === "pypi.org") return downloadPypi(name, version);
       if (registry === "nuget.org") return downloadNuget(name, version);
