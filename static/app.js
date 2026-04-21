@@ -54,6 +54,7 @@ const KNOWN_REGISTRIES = new Set([
   "cran.r-project.org",
   "juliahub.com",
   "packagist.org",
+  "maven.org",
 ]);
 
 // Go module path escaping (uppercase → "!" + lowercase). Used to line up the
@@ -88,6 +89,7 @@ function archiveExt(registry) {
     case "cran.r-project.org": return ".tar.gz";
     case "juliahub.com":      return ".tar.gz";
     case "packagist.org":     return ".zip";
+    case "maven.org":         return ".jar";
     default:                  return ".archive";
   }
 }
@@ -98,6 +100,7 @@ function archiveFormat(registry) {
     case "proxy.golang.org":
     case "nuget.org":
     case "packagist.org":
+    case "maven.org":
       return "zip";
     case "rubygems.org": return "gem";  // plain tar with data.tar.gz inside
     case "hex.pm":       return "hex";  // plain tar with contents.tar.gz inside
@@ -125,6 +128,11 @@ function registryPackageUrl(registry, name) {
     case "cran.r-project.org": return `https://cran.r-project.org/package=${name}`;
     case "juliahub.com":      return `https://juliahub.com/ui/Packages/General/${name}`;
     case "packagist.org":     return `https://packagist.org/packages/${name}`;
+    case "maven.org":         {
+      const slash = name.lastIndexOf("/");
+      if (slash < 0) return `https://central.sonatype.com/artifact/${name}`;
+      return `https://central.sonatype.com/artifact/${name.slice(0, slash)}/${name.slice(slash + 1)}`;
+    }
     default:                  return "#";
   }
 }

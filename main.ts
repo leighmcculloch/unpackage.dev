@@ -555,6 +555,109 @@ async function downloadPackagist(
   });
 }
 
+// ---------- Maven Central adapters (maven.org — Java) ----------
+//
+// Java packages are identified by a "groupId:artifactId" pair. In unpackage's
+// URLs we encode the colon as a slash — "org.apache.commons/commons-lang3" —
+// so the existing URL parser handles it.
+
+function mavenSplit(name: string): { group: string; artifact: string } | null {
+  const slash = name.lastIndexOf("/");
+  if (slash < 0) return null;
+  return { group: name.slice(0, slash), artifact: name.slice(slash + 1) };
+}
+
+async function searchMaven(q: string, per: string): Promise<Response> {
+  const u = `https://search.maven.org/solrsearch/select?q=${
+    encodeURIComponent(q)
+  }&rows=${encodeURIComponent(per)}&wt=json`;
+  const r = await fetch(u, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  const docs = Array.isArray(data.response?.docs) ? data.response.docs : [];
+  // deno-lint-ignore no-explicit-any
+  const crates = docs.map((d: any) => ({
+    name: `${d.g ?? ""}/${d.a ?? ""}`,
+    description: "",
+    max_version: d.latestVersion ?? "",
+  }));
+  return new Response(JSON.stringify({ crates }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=300",
+    },
+  });
+}
+
+async function packageMaven(name: string): Promise<Response> {
+  const parts = mavenSplit(name);
+  if (!parts) {
+    return new Response("bad name (expected group/artifact)", { status: 400 });
+  }
+  const u = `https://search.maven.org/solrsearch/select?q=g:%22${
+    encodeURIComponent(parts.group)
+  }%22+AND+a:%22${
+    encodeURIComponent(parts.artifact)
+  }%22&core=gav&rows=100&wt=json`;
+  const r = await fetch(u, { headers: { "Accept": "application/json" } });
+  if (!r.ok) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  const data = await r.json();
+  const docs = Array.isArray(data.response?.docs) ? data.response.docs : [];
+  // deno-lint-ignore no-explicit-any
+  const versions = docs.map((d: any) => ({
+    num: d.v ?? "",
+    yanked: false,
+    created_at: typeof d.timestamp === "number"
+      ? new Date(d.timestamp).toISOString()
+      : "",
+  }));
+  return new Response(
+    JSON.stringify({
+      crate: { name, description: "" },
+      versions,
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+      },
+    },
+  );
+}
+
+async function downloadMaven(
+  name: string,
+  version: string,
+): Promise<Response> {
+  const parts = mavenSplit(name);
+  if (!parts) return new Response("bad name", { status: 400 });
+  const groupPath = parts.group.replace(/\./g, "/");
+  const base =
+    `https://repo1.maven.org/maven2/${groupPath}/${parts.artifact}/${version}`;
+  // Prefer the -sources.jar since that's what we can meaningfully diff.
+  const srcUrl = `${base}/${parts.artifact}-${version}-sources.jar`;
+  let r = await fetch(srcUrl, { redirect: "follow" });
+  if (r.status === 404) {
+    // No source artifact — fall back to the main jar (compiled bytecode).
+    const mainUrl = `${base}/${parts.artifact}-${version}.jar`;
+    r = await fetch(mainUrl, { redirect: "follow" });
+  }
+  if (!r.ok || !r.body) {
+    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  }
+  return new Response(r.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
 // ---------- RubyGems adapters (rubygems.org) ----------
 
 async function searchRubyGems(q: string, per: string): Promise<Response> {
@@ -1033,6 +1136,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "cran.r-project.org") return searchCran(q);
       if (registry === "juliahub.com") return searchJulia(q);
       if (registry === "packagist.org") return searchPackagist(q, per);
+      if (registry === "maven.org") return searchMaven(q, per);
       if (registry === "rubygems.org") return searchRubyGems(q, per);
       if (registry === "pypi.org") return searchPypi(q);
       if (registry === "nuget.org") return searchNuget(q, per);
@@ -1049,6 +1153,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "cran.r-project.org") return packageCran(name);
       if (registry === "juliahub.com") return packageJulia(name);
       if (registry === "packagist.org") return packagePackagist(name);
+      if (registry === "maven.org") return packageMaven(name);
       if (registry === "rubygems.org") return packageRubyGems(name);
       if (registry === "pypi.org") return packagePypi(name);
       if (registry === "nuget.org") return packageNuget(name);
@@ -1069,6 +1174,7 @@ function handler(req: Request): Promise<Response> | Response {
       if (registry === "cran.r-project.org") return downloadCran(name, version);
       if (registry === "juliahub.com") return downloadJulia(name, version);
       if (registry === "packagist.org") return downloadPackagist(name, version);
+      if (registry === "maven.org") return downloadMaven(name, version);
       if (registry === "rubygems.org") return downloadRubyGems(name, version);
       if (registry === "pypi.org") return downloadPypi(name, version);
       if (registry === "nuget.org") return downloadNuget(name, version);
