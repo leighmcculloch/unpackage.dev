@@ -46,3 +46,8 @@ test("creates stable direct links and an empty result", () => {
   assert.match(body, /https:\/\/unpackage\.dev\/#npmjs\.com\/%40scope%2Fpkg@1\.0\.0\.\.\.1\.1\.0/);
   assert.match(markdown([]), /No dependency version changes found/);
 });
+
+test("does not treat an empty dependency result as a comment", () => {
+  assert.equal(markdown([]).startsWith("<!-- unpackage.dev dependency diff -->"), true);
+  assert.equal(changes("package.json", '{"dependencies":{"a":"1.0.0"}}', '{"dependencies":{"a":"1.0.0"}}').length, 0);
+});

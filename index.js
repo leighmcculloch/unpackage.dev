@@ -113,7 +113,7 @@ async function api(path, token, options = {}) {
     headers: { accept: "application/vnd.github+json", authorization: `Bearer ${token}`, "user-agent": "unpackage-dev-action", ...(options.headers ?? {}) },
   });
   if (!response.ok) throw new Error(`GitHub API ${response.status}: ${await response.text()}`);
-  return response.json();
+  return response.status === 204 ? null : response.json();
 }
 
 async function fileAt(repo, sha, path, token) {
@@ -155,6 +155,12 @@ async function run() {
   const body = markdown([...deps.values()]);
   const comments = await api(`/repos/${repo}/issues/${pr.number}/comments?per_page=100`, token);
   const existing = comments.find((comment) => comment.body?.includes(MARKER));
+  if (!deps.size) {
+    if (existing) {
+      await api(`/repos/${repo}/issues/comments/${existing.id}`, token, { method: "DELETE" });
+    }
+    return;
+  }
   if (existing) {
     await api(`/repos/${repo}/issues/comments/${existing.id}`, token, { method: "PATCH", body: JSON.stringify({ body }), headers: { "content-type": "application/json" } });
   } else {
