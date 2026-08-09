@@ -48,18 +48,47 @@ function jsonDeps(text, registry, out) {
 
 function pairs(text, registry, out) {
   const patterns = [
-    /["']?(@?[^\s"'=:#]+)["']?\s*[:=]\s*["']([^"']+)["']/g,
+    /["']?(@?[\w./+:-]+)["']?\s*[:=]\s*["']?([^"'\s,]+)["']?/g,
     /^\s*([A-Za-z0-9_.@+/-]+)\s+([^\s#]+)/gm,
   ];
   for (const re of patterns) {
     let m;
     while ((m = re.exec(text))) add(out, registry, m[1], m[2], m[2]);
   }
+  if (registry === "proxy.golang.org") {
+    for (const m of text.matchAll(/^\s*require\s+([^\s]+)\s+v?([^\s]+)/gm)) add(out, registry, m[1], m[2], m[2]);
+  }
+  if (registry === "rubygems.org") {
+    for (const m of text.matchAll(/gem\s+["']([^"']+)["']\s*,\s*["'][^0-9v]*v?([^"']+)["']/g)) add(out, registry, m[1], m[2], m[2]);
+  }
+  if (registry === "pub.dev") {
+    for (const m of text.matchAll(/^\s*([\w-]+):\s*[~^<>= ]*([0-9][^\s]+)/gm)) add(out, registry, m[1], m[2], m[2]);
+  }
+  if (registry === "nuget.org") {
+    for (const m of text.matchAll(/PackageReference\s+Include=["']([^"']+)["']\s+Version=["']([^"']+)["']/g)) add(out, registry, m[1], m[2], m[2]);
+  }
+  if (registry === "hex.pm") {
+    for (const m of text.matchAll(/([\w-]+):\s*"~>\s*([0-9][^"]+)/g)) add(out, registry, m[1], m[2], m[2]);
+  }
+  if (registry === "cran.r-project.org") {
+    for (const m of text.matchAll(/(?:Imports|Depends|Suggests):\s*([^\n]+)/g)) {
+      for (const dep of m[1].matchAll(/([A-Za-z][\w.]*)\s*\(?(?:>=|==|=)?\s*([0-9][\w.]*)/g)) add(out, registry, dep[1], dep[2], dep[2]);
+    }
+  }
 }
 
 function extract(path, text, registry) {
   const out = new Map();
   if (/package\.json$/.test(path) || /deno\.jsonc?$/.test(path)) jsonDeps(text, registry, out);
+  if (registry === "jsr.io") {
+    try {
+      const data = JSON.parse(text);
+      for (const [name, value] of Object.entries(data.imports ?? {})) {
+        const match = String(value).match(/@([0-9][^\s/]+)/);
+        if (match) add(out, registry, name, match[1], match[1]);
+      }
+    } catch { /* textual parser below */ }
+  }
   pairs(text, registry, out);
   return out;
 }
@@ -75,7 +104,7 @@ function changes(path, before, after) {
       result.push({ registry, name: newer.name, oldVersion: older.oldVersion, newVersion: newer.newVersion });
     }
   }
-  return result;
+  return result.filter((dep) => dep.name !== "Version");
 }
 
 async function api(path, token, options = {}) {
@@ -133,4 +162,8 @@ async function run() {
   }
 }
 
-run().catch((error) => { console.error(error); process.exitCode = 1; });
+if (require.main === module) {
+  run().catch((error) => { console.error(error); process.exitCode = 1; });
+}
+
+module.exports = { changes, markdown, registryFor };

@@ -9,7 +9,8 @@
     "start": "deno run --allow-net --allow-read --allow-env main.ts",
     "check": "deno check main.ts",
     "fmt": "deno fmt",
-    "lint": "deno lint"
+    "lint": "deno lint",
+    "test": "node --test test/action.test.js"
   },
 
   "fmt": {
