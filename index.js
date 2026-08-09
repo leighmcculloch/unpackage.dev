@@ -113,8 +113,15 @@ function changes(path, before, after) {
   const result = [];
   for (const [key, newer] of newDeps) {
     const older = oldDeps.get(key);
-    if (older && older.oldVersion !== newer.newVersion) {
+    if (!older) {
+      result.push({ registry, name: newer.name, oldVersion: null, newVersion: newer.newVersion, change: "added" });
+    } else if (older.oldVersion !== newer.newVersion) {
       result.push({ registry, name: newer.name, oldVersion: older.oldVersion, newVersion: newer.newVersion });
+    }
+  }
+  for (const [key, older] of oldDeps) {
+    if (!newDeps.has(key)) {
+      result.push({ registry, name: older.name, oldVersion: older.oldVersion, newVersion: null, change: "removed" });
     }
   }
   const filtered = result.filter((dep) => dep.name !== "Version");
@@ -153,8 +160,10 @@ async function fileAt(repo, sha, path, token) {
 function markdown(deps) {
   if (!deps.length) return `${MARKER}\nNo dependency version changes found in this pull request.`;
   const rows = deps.sort((a, b) => a.name.localeCompare(b.name)).map((d) => {
-    const link = `${BASE_URL}${d.registry}/${encodeURIComponent(d.name)}@${encodeURIComponent(d.oldVersion)}...${encodeURIComponent(d.newVersion)}`;
-    return `| ${d.name} | ${d.oldVersion} | ${d.newVersion} | [View package diff](${link}) |`;
+    const link = d.oldVersion && d.newVersion
+      ? `[View package diff](${BASE_URL}${d.registry}/${encodeURIComponent(d.name)}@${encodeURIComponent(d.oldVersion)}...${encodeURIComponent(d.newVersion)})`
+      : "—";
+    return `| ${d.name} | ${d.oldVersion ?? "—"} | ${d.newVersion ?? "—"} | ${link} |`;
   });
   return `${MARKER}\n### Dependency changes\n\n| Dependency | Old | New | Unpackage diff |\n| --- | --- | --- | --- |\n${rows.join("\n")}`;
 }

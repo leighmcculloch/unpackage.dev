@@ -46,7 +46,18 @@ test("detects JSR changes with caret specifiers and deno.lock", () => {
 });
 
 test("ignores unchanged and newly added dependencies", () => {
-  assert.deepEqual(changes("package.json", '{"dependencies":{"a":"1.0.0"}}', '{"dependencies":{"a":"1.0.0","b":"2.0.0"}}'), []);
+  assert.deepEqual(changes("package.json", '{"dependencies":{"a":"1.0.0"}}', '{"dependencies":{"a":"1.0.0","b":"2.0.0"}}'), [{ registry: "npmjs.com", name: "b", oldVersion: null, newVersion: "2.0.0", change: "added" }]);
+});
+
+test("reports added and removed dependencies without package links", () => {
+  const result = changes("package.json", '{"dependencies":{"removed":"1.0.0"}}', '{"dependencies":{"added":"2.0.0"}}');
+  assert.deepEqual(result, [
+    { registry: "npmjs.com", name: "added", oldVersion: null, newVersion: "2.0.0", change: "added" },
+    { registry: "npmjs.com", name: "removed", oldVersion: "1.0.0", newVersion: null, change: "removed" },
+  ]);
+  const body = markdown(result);
+  assert.match(body, /\| added \| — \| 2\.0\.0 \| — \|/);
+  assert.match(body, /\| removed \| 1\.0\.0 \| — \| — \|/);
 });
 
 test("creates stable direct links and an empty result", () => {
