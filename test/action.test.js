@@ -37,6 +37,14 @@ test("handles scoped npm packages and monorepo manifests", () => {
   assert.deepEqual(result[0], { registry: "npmjs.com", name: "@scope/pkg", oldVersion: "2.0.0", newVersion: "2.1.0" });
 });
 
+test("detects JSR changes with caret specifiers and deno.lock", () => {
+  const result = changes("deno.json", '{"imports":{"@std/http":"jsr:@std/http@^1.0.0"}}', '{"imports":{"@std/http":"jsr:@std/http@^1.1.3"}}');
+  assert.deepEqual(result[0], { registry: "jsr.io", name: "@std/http", oldVersion: "1.0.0", newVersion: "1.1.3" });
+  const lock = changes("deno.lock", '"jsr:@std/http@^1.0.0": "1.0.0"', '"jsr:@std/http@^1.1.3": "1.1.3"');
+  assert.deepEqual(lock[0], { registry: "jsr.io", name: "@std/http", oldVersion: "1.0.0", newVersion: "1.1.3" });
+  assert.equal(registryFor("services/api/deno.jsonc"), "jsr.io");
+});
+
 test("ignores unchanged and newly added dependencies", () => {
   assert.deepEqual(changes("package.json", '{"dependencies":{"a":"1.0.0"}}', '{"dependencies":{"a":"1.0.0","b":"2.0.0"}}'), []);
 });

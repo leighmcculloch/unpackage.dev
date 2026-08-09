@@ -1,9 +1,13 @@
 const MARKER = "<!-- unpackage.dev dependency diff -->";
 const BASE_URL = "https://unpackage.dev/#";
 
+function log(message, data = {}) {
+  console.log(`[unpackage.dev] ${message} ${JSON.stringify(data)}`);
+}
+
 const registryByFile = [
   [/package\.json$|package-lock\.json$|npm-shrinkwrap\.json$/, "npmjs.com"],
-  [/deno\.json(?:c)?$/, "jsr.io"],
+  [/deno\.json(?:c)?$|deno\.lock$/, "jsr.io"],
   [/Cargo\.(toml|lock)$/, "crates.io"],
   [/go\.(mod|sum)$/, "proxy.golang.org"],
   [/Gemfile(?:\.lock)?$/, "rubygems.org"],
@@ -84,10 +88,15 @@ function extract(path, text, registry) {
     try {
       const data = JSON.parse(text);
       for (const [name, value] of Object.entries(data.imports ?? {})) {
-        const match = String(value).match(/@([0-9][^\s/]+)/);
+        const match = String(value).match(/@([\^~<>=v]*[0-9][^\s/]+)/);
         if (match) add(out, registry, name, match[1], match[1]);
       }
     } catch { /* textual parser below */ }
+  }
+  if (registry === "jsr.io" && /deno\.lock$/.test(path)) {
+    for (const m of text.matchAll(/jsr:@([^/]+\/[^@"]+)@[^"\s]+["']?\s*:\s*["']([^"']+)["']/g)) {
+      add(out, registry, `@${m[1]}`, m[2], m[2]);
+    }
   }
   pairs(text, registry, out);
   return out;
@@ -95,8 +104,12 @@ function extract(path, text, registry) {
 
 function changes(path, before, after) {
   const registry = registryFor(path);
-  if (!registry) return [];
+  if (!registry) {
+    log("Skipping unsupported file", { path });
+    return [];
+  }
   const oldDeps = extract(path, before, registry), newDeps = extract(path, after, registry);
+  log("Parsed dependency file", { path, ecosystem: registry === "jsr.io" ? "Deno / JSR" : registry, registry, beforeBytes: Buffer.byteLength(before), afterBytes: Buffer.byteLength(after), beforeDependencies: [...oldDeps.values()], afterDependencies: [...newDeps.values()] });
   const result = [];
   for (const [key, newer] of newDeps) {
     const older = oldDeps.get(key);
@@ -104,24 +117,35 @@ function changes(path, before, after) {
       result.push({ registry, name: newer.name, oldVersion: older.oldVersion, newVersion: newer.newVersion });
     }
   }
-  return result.filter((dep) => dep.name !== "Version");
+  const filtered = result.filter((dep) => dep.name !== "Version");
+  log("Dependency comparison complete", { path, changes: filtered });
+  return filtered;
 }
 
 async function api(path, token, options = {}) {
+  const method = options.method ?? "GET";
+  log("GitHub API request", { method, path });
   const response = await fetch(`https://api.github.com${path}`, {
     ...options,
     headers: { accept: "application/vnd.github+json", authorization: `Bearer ${token}`, "user-agent": "unpackage-dev-action", ...(options.headers ?? {}) },
   });
+  log("GitHub API response", { method, path, status: response.status, ok: response.ok });
   if (!response.ok) throw new Error(`GitHub API ${response.status}: ${await response.text()}`);
   return response.status === 204 ? null : response.json();
 }
 
 async function fileAt(repo, sha, path, token) {
+  log("Reading file", { path, sha });
   try {
     const data = await api(`/repos/${repo}/contents/${path}?ref=${encodeURIComponent(sha)}`, token);
-    return data.encoding === "base64" ? Buffer.from(data.content, "base64").toString("utf8") : "";
+    const content = data.encoding === "base64" ? Buffer.from(data.content, "base64").toString("utf8") : "";
+    log("Read file", { path, sha, bytes: Buffer.byteLength(content), encoding: data.encoding });
+    return content;
   } catch (error) {
-    if (String(error).includes("GitHub API 404")) return "";
+    if (String(error).includes("GitHub API 404")) {
+      log("File does not exist at revision", { path, sha });
+      return "";
+    }
     throw error;
   }
 }
@@ -136,40 +160,60 @@ function markdown(deps) {
 }
 
 async function run() {
+  log("Action started", { repository: process.env.GITHUB_REPOSITORY, eventPath: process.env.GITHUB_EVENT_PATH });
   const event = require(process.env.GITHUB_EVENT_PATH);
+  log("Loaded event", { eventName: process.env.GITHUB_EVENT_NAME, hasPullRequest: event.pull_request != null });
   if (event.pull_request == null) throw new Error("This action only supports pull_request events.");
   const token = process.env["INPUT_GITHUB-TOKEN"];
   if (!token) throw new Error("github-token is required");
   const repo = process.env.GITHUB_REPOSITORY;
   const pr = event.pull_request;
+  log("Pull request context", { number: pr.number, baseSha: pr.base.sha, headSha: pr.head.sha });
   const files = await api(`/repos/${repo}/pulls/${pr.number}/files?per_page=100`, token);
+  log("Changed files received", { count: files.length, files: files.map((file) => ({ path: file.filename, status: file.status, additions: file.additions, deletions: file.deletions })) });
   const deps = new Map();
   for (const file of files) {
     const path = file.filename;
-    if (!registryFor(path) || file.status === "removed") continue;
+    const registry = registryFor(path);
+    if (!registry) {
+      log("Skipping changed file without supported registry", { path, status: file.status });
+      continue;
+    }
+    if (file.status === "removed") {
+      log("Skipping removed dependency file", { path, registry });
+      continue;
+    }
+    log("Processing dependency file", { path, registry, status: file.status });
     const [before, after] = await Promise.all([
       fileAt(repo, pr.base.sha, path, token), fileAt(repo, pr.head.sha, path, token),
     ]);
     for (const dep of changes(path, before, after)) deps.set(`${dep.registry}:${dep.name}`, dep);
   }
+  log("All dependency changes collected", { count: deps.size, changes: [...deps.values()] });
   const body = markdown([...deps.values()]);
   const comments = await api(`/repos/${repo}/issues/${pr.number}/comments?per_page=100`, token);
   const existing = comments.find((comment) => comment.body?.includes(MARKER));
+  log("Existing bot comment lookup", { commentCount: comments.length, found: Boolean(existing), commentId: existing?.id ?? null });
   if (!deps.size) {
     if (existing) {
+      log("Deleting stale bot comment because no version changes remain", { commentId: existing.id });
       await api(`/repos/${repo}/issues/comments/${existing.id}`, token, { method: "DELETE" });
     }
+    log("Action finished without posting a comment", { reason: "no dependency version changes" });
     return;
   }
   if (existing) {
+    log("Updating bot comment", { commentId: existing.id, dependencyCount: deps.size, body });
     await api(`/repos/${repo}/issues/comments/${existing.id}`, token, { method: "PATCH", body: JSON.stringify({ body }), headers: { "content-type": "application/json" } });
   } else {
+    log("Creating bot comment", { dependencyCount: deps.size, body });
     await api(`/repos/${repo}/issues/${pr.number}/comments`, token, { method: "POST", body: JSON.stringify({ body }), headers: { "content-type": "application/json" } });
   }
+  log("Action finished", { dependencyCount: deps.size, commentAction: existing ? "updated" : "created" });
 }
 
 if (require.main === module) {
   run().catch((error) => { console.error(error); process.exitCode = 1; });
 }
 
-module.exports = { changes, markdown, registryFor };
+module.exports = { changes, markdown, registryFor, log };
