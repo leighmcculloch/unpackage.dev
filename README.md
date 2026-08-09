@@ -60,8 +60,6 @@ Projects can add the bundled action to a pull-request workflow:
 ```yaml
 steps:
   - uses: leighmcculloch/unpackage.dev@main
-    with:
-      github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 The action reads changed dependency manifests from the pull request, supports
