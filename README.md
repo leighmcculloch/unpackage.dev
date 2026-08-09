@@ -53,6 +53,23 @@ Want another ecosystem? [Open an issue][issues] — happy to add more.
 
 ## How to use it
 
+### GitHub Action
+
+Projects can add the bundled action to a pull-request workflow:
+
+```yaml
+steps:
+  - uses: leighmcculloch/unpackage.dev@main
+    with:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+The action reads changed dependency manifests from the pull request, supports
+all ecosystems listed above, and updates one pull-request comment with old and
+new versions plus direct unpackage.dev links. Give the job `contents: read` and
+`pull-requests: write` permissions. It is intentionally limited to pull
+requests.
+
 1. Pick the ecosystem from the dropdown and start typing a package name.
 2. Pick the version you're on in the _old_ dropdown, and the version you're
    moving to in the _new_ dropdown. If you leave _old_ as `None (just view
