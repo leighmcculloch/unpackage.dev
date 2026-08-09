@@ -59,7 +59,7 @@ Projects can add the bundled action to a pull-request workflow:
 
 ```yaml
 steps:
-  - uses: leighmcculloch/unpackage.dev/.github/actions/unpackage-dependency-diff@main
+  - uses: leighmcculloch/unpackage.dev@main
     with:
       github-token: ${{ secrets.GITHUB_TOKEN }}
 ```

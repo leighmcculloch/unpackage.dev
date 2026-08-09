@@ -13,6 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/unpackage-dependency-diff
+      - uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
