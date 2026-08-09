@@ -1,0 +1,14 @@
+name: Unpackage dependency diff
+description: Comment on pull requests with unpackage.dev links for dependency updates
+author: unpackage.dev
+branding:
+  icon: package
+  color: purple
+inputs:
+  github-token:
+    description: Token used to read the pull request and create its comment
+    required: true
+    default: ${{ github.token }}
+runs:
+  using: node20
+  main: index.js

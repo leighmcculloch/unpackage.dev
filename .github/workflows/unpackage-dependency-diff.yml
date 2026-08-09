@@ -1,0 +1,17 @@
+name: Unpackage dependency diff
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/unpackage-dependency-diff
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
