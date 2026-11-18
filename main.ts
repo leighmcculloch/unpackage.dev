@@ -157,16 +157,40 @@ function searchGo(q: string): Response {
 }
 
 async function packageGo(name: string): Promise<Response> {
-  const escaped = goEscape(name);
-  const r = await fetch(`https://proxy.golang.org/${escaped}/@v/list`, {
-    headers: { "Accept": "text/plain" },
-  });
-  if (!r.ok) {
-    return new Response(`upstream error: ${r.status}`, { status: r.status });
+  const base = name.replace(/\/v(?:[2-9]|[1-9]\d+)$/, "");
+  const modules = new Set([base, name]);
+  // The proxy lists versions of one module, not its sibling major paths.
+  // pkg.go.dev links those paths, including majors after gaps (chi skips
+  // directly from +incompatible releases on the base path to /v5).
+  const page = await fetch(`https://pkg.go.dev/${name}?tab=versions`);
+  if (page.ok) {
+    for (const match of (await page.text()).matchAll(/href="\/([^"?#@]+)"/g)) {
+      const path = match[1];
+      if (path.replace(/\/v(?:[2-9]|[1-9]\d+)$/, "") === base) {
+        modules.add(path);
+      }
+    }
+  } else {
+    await page.body?.cancel();
   }
-  const list = (await r.text()).split("\n").map((s) => s.trim()).filter((s) =>
-    s
-  );
+  const lists = await Promise.all([...modules].map(async (path) => {
+    const r = await fetch(
+      `https://proxy.golang.org/${goEscape(path)}/@v/list`,
+      {
+        headers: { "Accept": "text/plain" },
+      },
+    );
+    if (r.status === 404 || r.status === 410) {
+      await r.body?.cancel();
+      return [];
+    }
+    if (!r.ok) throw new Error(`upstream error: ${r.status}`);
+    return (await r.text()).split("\n").map((s) => s.trim()).filter(Boolean);
+  }));
+  const list = [...new Set(lists.flat())];
+  if (!list.length) {
+    return new Response("package not found", { status: 404 });
+  }
   list.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   const versions = list.map((num) => ({ num, yanked: false, created_at: "" }));
   return new Response(
@@ -184,6 +208,15 @@ async function packageGo(name: string): Promise<Response> {
 }
 
 async function downloadGo(name: string, version: string): Promise<Response> {
+  // v0/v1 and legacy +incompatible releases live on the unsuffixed path.
+  // gopkg.in uses its own .vN convention; leave those paths unchanged.
+  if (!name.startsWith("gopkg.in/")) {
+    name = name.replace(/\/v(?:[2-9]|[1-9]\d+)$/, "");
+    const major = version.match(/^v(\d+)\./)?.[1];
+    if (major && Number(major) >= 2 && !version.endsWith("+incompatible")) {
+      name += `/v${major}`;
+    }
+  }
   const u = `https://proxy.golang.org/${goEscape(name)}/@v/${
     goEscape(version)
   }.zip`;
@@ -1108,7 +1141,7 @@ function rateLimited(req: Request): boolean {
 
 // ---------- router ----------
 
-function handler(req: Request): Promise<Response> | Response {
+export function handler(req: Request): Promise<Response> | Response {
   const url = new URL(req.url);
 
   if (url.pathname.startsWith("/api/registry/")) {
@@ -1188,6 +1221,8 @@ function handler(req: Request): Promise<Response> | Response {
   return serveDir(req, { fsRoot: "static", quiet: true });
 }
 
-const port = Number(Deno.env.get("PORT") ?? 8000);
-console.log(`unpackage.dev listening on http://localhost:${port}`);
-Deno.serve({ port }, handler);
+if (import.meta.main) {
+  const port = Number(Deno.env.get("PORT") ?? 8000);
+  console.log(`unpackage.dev listening on http://localhost:${port}`);
+  Deno.serve({ port }, handler);
+}

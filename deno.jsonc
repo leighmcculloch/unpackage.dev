@@ -10,7 +10,7 @@
     "check": "deno check main.ts",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "test": "node --test test/action.test.js"
+    "test": "node --test test/action.test.js && deno test --allow-env test/go_test.ts"
   },
 
   "fmt": {

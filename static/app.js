@@ -57,12 +57,6 @@ const KNOWN_REGISTRIES = new Set([
   "maven.org",
 ]);
 
-// Go module path escaping (uppercase → "!" + lowercase). Used to line up the
-// module prefix inside a module zip with the escaped form in the archive.
-function goEscape(s) {
-  return s.replace(/[A-Z]/g, (c) => "!" + c.toLowerCase());
-}
-
 function apiSearchUrl(registry, q, per) {
   return `/api/registry/${registry}/search?q=${encodeURIComponent(q)}&per_page=${encodeURIComponent(per)}`;
 }
@@ -554,9 +548,11 @@ function parseZip(buf) {
 
 function stripArchivePrefix(files, registry, name, version) {
   if (registry === "proxy.golang.org") {
-    // Go module zips nest content under {escaped-module}@{version}/… with
-    // multiple slashes, which the generic detector below can't handle.
-    const prefix = `${goEscape(name)}@${version}/`;
+    // Use the archive's module path, not the entered path: a comparison can
+    // span the base module and /vN modules. Zip paths use unescaped names.
+    const first = Object.keys(files)[0];
+    if (!first) return files;
+    const prefix = first.slice(0, first.indexOf("@") + 1) + `${version}/`;
     const out = {};
     for (const [p, b] of Object.entries(files)) {
       if (p.startsWith(prefix)) out[p.slice(prefix.length)] = b;
