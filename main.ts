@@ -185,9 +185,26 @@ async function packageGo(name: string): Promise<Response> {
       return [];
     }
     if (!r.ok) throw new Error(`upstream error: ${r.status}`);
-    return (await r.text()).split("\n").map((s) => s.trim()).filter(Boolean);
+    return (await r.text()).split("\n").map((s) => s.trim()).filter(Boolean)
+      .map((num) => ({ num, path }));
   }));
-  const list = [...new Set(lists.flat())];
+  const entries = new Map(lists.flat().map((v) => [v.num, v]));
+  const checked = await Promise.all([...entries.values()].map(async (v) => {
+    // Some /vN lists include old repository tags that are only usable on
+    // the base path as +incompatible. Keep both only if /vN accepts its tag.
+    if (entries.has(`${v.num}+incompatible`)) {
+      const r = await fetch(
+        `https://proxy.golang.org/${goEscape(v.path)}/@v/${
+          goEscape(v.num)
+        }.info`,
+      );
+      await r.body?.cancel();
+      if (r.status === 404 || r.status === 410) return null;
+      if (!r.ok) throw new Error(`upstream error: ${r.status}`);
+    }
+    return v.num;
+  }));
+  const list = checked.filter((num): num is string => num !== null);
   if (!list.length) {
     return new Response("package not found", { status: 404 });
   }

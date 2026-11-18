@@ -5,7 +5,8 @@ Deno.test("Go API compares versions across module major paths", async () => {
   const base = "github.com/Acme/widget";
   const originalFetch = globalThis.fetch;
   const lists: Record<string, string> = {
-    [base]: "v1.2.0\nv4.0.0+incompatible\nv1.10.0\n",
+    [base]: "v1.2.0\nv4.0.0+incompatible\nv4.1.0+incompatible\nv1.10.0\n",
+    [`${base}/v4`]: "v4.0.0\nv4.1.0\nv4.2.0\n",
     [`${base}/v5`]: "v5.0.0\nv5.1.0\n",
     [`${base}/v12`]: "v12.0.0\n",
   };
@@ -15,6 +16,7 @@ Deno.test("Go API compares versions across module major paths", async () => {
       return Promise.resolve(
         new Response(
           `<a href="/${base}">base</a>
+         <a href="/${base}/v4">v4</a>
          <a href="/${base}/v5">v5</a>
          <a href="/${base}/v12">v12</a>
          <a href="/${base}/v2">missing</a>
@@ -32,8 +34,11 @@ Deno.test("Go API compares versions across module major paths", async () => {
         }),
       );
     }
-    const version = file.replace(/\.zip$/, "");
-    const exists = lists[module]?.split("\n").includes(version);
+    const version = file.replace(/\.(zip|info)$/, "");
+    // The list endpoint can advertise a tag whose module metadata and
+    // archive are rejected. Its +incompatible counterpart remains valid.
+    const rejected = module === `${base}/v4` && version === "v4.0.0";
+    const exists = !rejected && lists[module]?.split("\n").includes(version);
     return Promise.resolve(
       new Response(`${module}@${version}/source.go`, {
         status: exists ? 200 : 404,
@@ -53,12 +58,16 @@ Deno.test("Go API compares versions across module major paths", async () => {
         "v12.0.0",
         "v5.1.0",
         "v5.0.0",
+        "v4.2.0",
+        "v4.1.0+incompatible",
+        "v4.1.0",
         "v4.0.0+incompatible",
         "v1.10.0",
         "v1.2.0",
       ]);
       for (const [module, versions] of Object.entries(lists)) {
         for (const version of versions.trim().split("\n")) {
+          if (module === `${base}/v4` && version === "v4.0.0") continue;
           const archive = await handler(
             new Request(
               `http://localhost/api/registry/proxy.golang.org/download/${name}/${version}`,
