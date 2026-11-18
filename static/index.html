@@ -56,6 +56,16 @@
       <ul id="results" hidden></ul>
     </section>
 
+    <details id="pr-entry" class="pr-entry">
+      <summary>Review a pull request</summary>
+      <form id="pr-form" class="pr-form">
+        <div class="search-row">
+          <input id="pr-url" type="url" placeholder="https://github.com/owner/repo/pull/123" required aria-label="GitHub pull request URL" />
+          <button class="btn" type="submit">Find changes</button>
+        </div>
+      </form>
+    </details>
+
     <section class="compare-wrap" hidden id="compare">
       <div class="card" id="compare-card">
         <div class="versions">
@@ -129,8 +139,14 @@
       <div class="file-tree" id="file-tree"></div>
     </aside>
     <main class="diff-pane" id="diff-pane">
+      <section id="pr-results" class="pr-results" aria-label="Pull request dependency changes" hidden>
+        <details id="pr-details" open>
+          <summary><span id="pr-status" role="status" aria-live="polite"></span></summary>
+          <div id="pr-dependencies"></div>
+        </details>
+      </section>
       <section class="diff" id="diff">
-        <div class="empty">Search a crate above to compare versions.</div>
+        <div class="empty">Paste a pull request URL or search for a package above.</div>
       </section>
       <footer>
         <p><a href="https://github.com/leighmcculloch/unpackage.dev" target="_blank" rel="noopener">github.com/leighmcculloch/unpackage.dev</a></p>

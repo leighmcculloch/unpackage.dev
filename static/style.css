@@ -217,6 +217,7 @@ a:hover { text-decoration: underline; }
 .topbar {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   z-index: 2;
@@ -230,9 +231,13 @@ a:hover { text-decoration: underline; }
 .workspace {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
+
+.sidebar[hidden], .toolbar[hidden], .crate-link[hidden] { display: none !important; }
+.workspace:has(> .sidebar[hidden]) { grid-template-columns: 1fr; grid-template-rows: 1fr; }
 
 /* ---------- topbar content ---------- */
 
@@ -337,7 +342,7 @@ h1 .dot {
   pointer-events: none;
 }
 
-#search {
+#search, #pr-url {
   width: 100%;
   padding: 0.7rem 0.9rem 0.7rem 2.55rem;
   font: inherit;
@@ -351,10 +356,29 @@ h1 .dot {
   box-shadow: var(--shadow-sm);
 }
 
-#search:focus {
+#search:focus, #pr-url:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+
+.pr-entry { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.pr-entry summary { width: fit-content; color: var(--accent); cursor: pointer; font-size: 0.85rem; }
+.pr-entry summary:hover { text-decoration: underline; }
+.pr-form { padding-top: 0.5rem; }
+#pr-url { flex: 1; min-width: 160px; padding-left: 0.9rem; }
+.pr-form .btn { align-self: stretch; }
+.pr-results { margin: 1rem 1.25rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.pr-results summary { cursor: pointer; }
+.pr-results details[open] summary { margin-bottom: 1rem; }
+#pr-status { overflow-wrap: anywhere; }
+.pr-table-wrap { overflow-x: auto; }
+.pr-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+.pr-table th, .pr-table td { padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border); }
+.pr-table td:first-child { font-family: var(--mono); overflow-wrap: anywhere; }
+.pr-table small { display: block; margin-top: 0.25rem; color: var(--muted); font-family: var(--sans); }
+.pr-table td:not(:first-child) { white-space: nowrap; }
+.pr-table a { display: inline-block; }
+.pr-note { color: var(--muted); font-size: 0.8rem; margin-bottom: 0; }
 
 #results {
   position: absolute;
@@ -635,6 +659,7 @@ select option.yanked {
 /* Collapsed top bar — hide the bulk of the content. Keep the toolbar only,
    now also showing site name + crate summary on the left. */
 .topbar.collapsed header,
+.topbar.collapsed .pr-entry,
 .topbar.collapsed .search,
 .topbar.collapsed .compare-wrap { display: none; }
 
@@ -1049,6 +1074,8 @@ select option.yanked {
 @media (max-width: 640px) {
   .topbar > * { padding-left: 0.85rem; padding-right: 0.85rem; }
   .diff { padding-left: 0.85rem; padding-right: 0.85rem; }
+  .toolbar { flex-wrap: wrap; }
+  .toolbar .compact-summary { flex: 1 1 100%; }
 
   .versions { grid-template-columns: 1fr; }
   .arrow { transform: rotate(90deg); align-self: center; padding: 0; }

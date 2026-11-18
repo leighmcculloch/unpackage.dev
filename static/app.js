@@ -831,6 +831,7 @@ function renderAll() {
 
   statsEl.innerHTML = renderStats(counts, state.left === state.right);
   toolbarEl.hidden = false;
+  if (!$("pr-results").hidden && !$("pr-details").open) setTopCollapsed(true);
 
   const anyChanged = counts.added + counts.removed + counts.modified > 0;
   // If nothing changed (view source, or genuinely identical versions) default
@@ -1538,6 +1539,83 @@ function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
+}
+
+// ---------- pull request dependency review ----------
+
+const prForm = $("pr-form");
+const prInput = $("pr-url");
+const prStatus = $("pr-status");
+const prDependencies = $("pr-dependencies");
+let prRequest = null;
+
+async function loadPullRequest(expand = true) {
+  prRequest?.abort();
+  const request = prRequest = new AbortController();
+  $("pr-results").hidden = false;
+  $("pr-details").open = expand;
+  prStatus.textContent = "Finding dependency changes…";
+  prDependencies.replaceChildren();
+  prForm.setAttribute("aria-busy", "true");
+  try {
+    const response = await fetch(`/api/github/pull-request?url=${encodeURIComponent(prInput.value.trim())}`, {
+      signal: request.signal,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    if (request.signal.aborted) return;
+    const url = new URL(location.href);
+    url.searchParams.set("pr", data.url);
+    history.replaceState(null, "", url);
+    const title = document.createElement("a");
+    title.href = data.url;
+    title.target = "_blank";
+    title.rel = "noopener";
+    title.textContent = data.title;
+    prStatus.replaceChildren(title, document.createTextNode(` · ${data.dependencies.length} dependency changes`));
+    if (!data.dependencies.length) {
+      prDependencies.textContent = data.supportedFiles
+        ? "No dependency version changes detected in supported files."
+        : "No supported dependency files changed in this pull request.";
+      return;
+    }
+    const rows = data.dependencies.map((dep) => {
+      const name = dep.registry === "maven.org" ? dep.name.replace(":", "/") : dep.name;
+      const version = (v) => dep.registry === "proxy.golang.org" && !v.startsWith("v") ? `v${v}` : v;
+      const range = dep.oldVersion && dep.newVersion
+        ? `${version(dep.oldVersion)}...${version(dep.newVersion)}`
+        : version(dep.newVersion ?? dep.oldVersion);
+      const href = `#${dep.registry}/${encodeURIComponent(name)}@${encodeURIComponent(range)}`;
+      return `<tr><td>${escapeHtml(dep.name)}<small>${escapeHtml(dep.registry)}</small></td>` +
+        `<td>${escapeHtml(dep.oldVersion ?? "—")}</td><td>${escapeHtml(dep.newVersion ?? "—")}</td>` +
+        `<td><a href="${escapeHtml(href)}">${dep.oldVersion && dep.newVersion ? "View diff" : "View source"} →</a></td></tr>`;
+    }).join("");
+    prDependencies.innerHTML = `<div class="pr-table-wrap"><table class="pr-table"><thead><tr><th>Dependency</th><th>Old</th><th>New</th><th>Review</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+      `<p class="pr-note">Detection uses the GitHub Action’s manifest parsers; unsupported formats and unpinned dependencies may not appear.</p>`;
+  } catch (error) {
+    if (request.signal.aborted) return;
+    prStatus.textContent = error.message;
+  } finally {
+    if (prRequest === request) prForm.removeAttribute("aria-busy");
+  }
+}
+
+prForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadPullRequest();
+});
+
+prDependencies.addEventListener("click", (event) => {
+  if (!event.target.closest("a")) return;
+  $("pr-details").open = false;
+  diffPaneEl.scrollTop = 0;
+});
+
+const initialPr = new URL(location.href).searchParams.get("pr");
+if (initialPr) {
+  $("pr-entry").open = true;
+  prInput.value = initialPr;
+  loadPullRequest(!location.hash);
 }
 
 // ---------- bootstrap ----------

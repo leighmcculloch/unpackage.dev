@@ -53,6 +53,19 @@ Want another ecosystem? [Open an issue][issues] — happy to add more.
 
 ## How to use it
 
+### Review a pull request
+
+Open **Review a pull request**, paste a public GitHub pull request URL,
+and click **Find changes**. The website lists detected dependency
+updates, additions, and removals. Click **View diff** to compare published
+packages, or **View source** for an added or removed dependency. The list stays
+available while you review packages, and the URL preserves the PR for sharing.
+
+No action installation or GitHub sign-in is needed. Detection reuses the action's
+manifest parsers; unsupported lockfile formats and unpinned dependencies may not
+be detected. Private repositories are not supported. GitHub's unauthenticated
+API limits apply, so large PRs or busy periods may require trying again later.
+
 ### GitHub Action
 
 Projects can add the bundled action to a pull-request workflow:
@@ -100,6 +113,10 @@ shape:
 - `GET /api/registry/{registry}/search?q=…`
 - `GET /api/registry/{registry}/package/{name}`
 - `GET /api/registry/{registry}/download/{name}/{version}`
+
+For PR review, `GET /api/github/pull-request?url=…` reads public manifests from
+GitHub at the PR's merge base and head, then uses the action's dependency parser
+to return version changes. It never executes repository code or posts comments.
 
 `{registry}` is one of `crates.io`, `npmjs.com`, `jsr.io`,
 `proxy.golang.org`, `rubygems.org`, `pypi.org`, `nuget.org`, `hex.pm`,

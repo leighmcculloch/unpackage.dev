@@ -1,4 +1,5 @@
 import { serveDir } from "@std/http/file-server";
+import { pullRequest } from "./github.ts";
 
 const USER_AGENT = "unpackage.dev (https://github.com/leighmcculloch)";
 
@@ -1160,6 +1161,14 @@ function rateLimited(req: Request): boolean {
 
 export function handler(req: Request): Promise<Response> | Response {
   const url = new URL(req.url);
+
+  if (url.pathname === "/api/github/pull-request") {
+    if (!sameOrigin(req)) return new Response("forbidden", { status: 403 });
+    if (rateLimited(req)) {
+      return new Response("rate limited", { status: 429 });
+    }
+    return pullRequest(url.searchParams.get("url") ?? "");
+  }
 
   if (url.pathname.startsWith("/api/registry/")) {
     if (!sameOrigin(req)) {

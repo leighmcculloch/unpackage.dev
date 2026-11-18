@@ -10,15 +10,15 @@
     "check": "deno check main.ts",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "test": "node --test test/action.test.js && deno test --allow-env test/go_test.ts"
+    "test": "node --test test/action.test.js && deno test --allow-env --allow-read test/*_test.ts"
   },
 
   "fmt": {
-    "include": ["main.ts", "deno.jsonc"]
+    "include": ["main.ts", "github.ts", "test/github_test.ts", "deno.jsonc"]
   },
 
   "lint": {
-    "include": ["main.ts"],
+    "include": ["main.ts", "github.ts"],
     "rules": {
       "tags": ["recommended"]
     }
