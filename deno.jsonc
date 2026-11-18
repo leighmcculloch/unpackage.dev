@@ -14,7 +14,13 @@
   },
 
   "fmt": {
-    "include": ["main.ts", "github.ts", "test/github_test.ts", "deno.jsonc"]
+    "include": [
+      "main.ts",
+      "github.ts",
+      "test/github_test.ts",
+      "test/static_test.ts",
+      "deno.jsonc"
+    ]
   },
 
   "lint": {

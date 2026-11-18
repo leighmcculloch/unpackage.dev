@@ -1545,9 +1545,33 @@ function escapeHtml(s) {
 
 const prForm = $("pr-form");
 const prInput = $("pr-url");
+const prEntry = $("pr-entry");
+const prToggle = $("pr-toggle");
+const packageSearchEl = $("package-search");
 const prStatus = $("pr-status");
 const prDependencies = $("pr-dependencies");
 let prRequest = null;
+
+function setPrMode(enabled) {
+  prEntry.hidden = !enabled;
+  packageSearchEl.hidden = enabled;
+  prToggle.setAttribute("aria-expanded", String(enabled));
+  resultsEl.hidden = true;
+  const prompt = $("input-prompt");
+  if (prompt) prompt.textContent = enabled
+    ? "Paste a PR URL above to review dependency changes."
+    : "Search for a package above to compare versions.";
+}
+
+prToggle.addEventListener("click", () => {
+  setPrMode(prEntry.hidden);
+  (prEntry.hidden ? searchInput : prInput).focus();
+});
+
+$("package-toggle").addEventListener("click", () => {
+  setPrMode(false);
+  searchInput.focus();
+});
 
 async function loadPullRequest(expand = true) {
   prRequest?.abort();
@@ -1607,13 +1631,14 @@ prForm.addEventListener("submit", (event) => {
 
 prDependencies.addEventListener("click", (event) => {
   if (!event.target.closest("a")) return;
+  setPrMode(false);
   $("pr-details").open = false;
   diffPaneEl.scrollTop = 0;
 });
 
 const initialPr = new URL(location.href).searchParams.get("pr");
 if (initialPr) {
-  $("pr-entry").open = true;
+  setPrMode(!location.hash);
   prInput.value = initialPr;
   loadPullRequest(!location.hash);
 }
@@ -1678,5 +1703,5 @@ window.addEventListener("hashchange", () => {
   } else {
     syncRegistryUI();
   }
-  searchInput.focus();
+  (prEntry.hidden ? searchInput : prInput).focus();
 })();

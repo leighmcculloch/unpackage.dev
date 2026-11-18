@@ -24,11 +24,11 @@
     <header>
       <div class="header-main">
         <h1><span class="dot" aria-hidden="true"></span>unpackage.dev</h1>
-        <p class="tag">Compare any two versions of a package as a folder diff.</p>
+        <p class="tag">Compare any two versions of a package as a folder diff, or <button id="pr-toggle" class="inline-link" type="button" aria-expanded="false" aria-controls="pr-entry">review a pr</button>.</p>
       </div>
     </header>
 
-    <section class="search">
+    <section class="search" id="package-search">
       <div class="search-row">
         <select id="registry-sel" class="registry-select" aria-label="Package registry">
           <option value="crates.io">Rust (crates.io)</option>
@@ -56,15 +56,18 @@
       <ul id="results" hidden></ul>
     </section>
 
-    <details id="pr-entry" class="pr-entry">
-      <summary>Review a pull request</summary>
+    <div id="pr-entry" class="pr-entry" hidden>
       <form id="pr-form" class="pr-form">
+        <div class="pr-form-heading">
+          <label for="pr-url">GitHub pull request</label>
+          <button id="package-toggle" class="inline-link" type="button">Compare a package instead</button>
+        </div>
         <div class="search-row">
           <input id="pr-url" type="url" placeholder="https://github.com/owner/repo/pull/123" required aria-label="GitHub pull request URL" />
           <button class="btn" type="submit">Find changes</button>
         </div>
       </form>
-    </details>
+    </div>
 
     <section class="compare-wrap" hidden id="compare">
       <div class="card" id="compare-card">
@@ -146,7 +149,7 @@
         </details>
       </section>
       <section class="diff" id="diff">
-        <div class="empty">Paste a pull request URL or search for a package above.</div>
+        <div class="empty" id="input-prompt">Search for a package above to compare versions.</div>
       </section>
       <footer>
         <p><a href="https://github.com/leighmcculloch/unpackage.dev" target="_blank" rel="noopener">github.com/leighmcculloch/unpackage.dev</a></p>

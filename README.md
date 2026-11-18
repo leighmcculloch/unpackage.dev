@@ -55,11 +55,13 @@ Want another ecosystem? [Open an issue][issues] — happy to add more.
 
 ### Review a pull request
 
-Open **Review a pull request**, paste a public GitHub pull request URL,
+Click **review a pr** in the banner, paste a public GitHub pull request URL,
 and click **Find changes**. The website lists detected dependency
 updates, additions, and removals. Click **View diff** to compare published
 packages, or **View source** for an added or removed dependency. The list stays
 available while you review packages, and the URL preserves the PR for sharing.
+PR review replaces the package search input; **Compare a package instead**
+switches back.
 
 No action installation or GitHub sign-in is needed. Detection reuses the action's
 manifest parsers; unsupported lockfile formats and unpinned dependencies may not
@@ -102,6 +104,12 @@ deno task start
 ```
 
 Then open <http://localhost:8000>. Set `PORT` to override the port.
+
+The server fingerprints JavaScript and CSS at startup and puts their
+content-hashed filenames in the HTML. Changed assets get new URLs automatically;
+unchanged assets can stay cached. HTML revalidates on every visit. Restart the
+server after editing frontend files to refresh the snapshot. No build step is
+needed.
 
 ## How it works
 

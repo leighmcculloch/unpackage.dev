@@ -361,12 +361,17 @@ h1 .dot {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-.pr-entry { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-.pr-entry summary { width: fit-content; color: var(--accent); cursor: pointer; font-size: 0.85rem; }
-.pr-entry summary:hover { text-decoration: underline; }
-.pr-form { padding-top: 0.5rem; }
+.pr-entry { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+.pr-form-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+.pr-form-heading label { font-size: 0.85rem; font-weight: 600; }
+.pr-form-heading .inline-link { font-size: 0.8rem; }
+.topbar:has(#pr-entry:not([hidden])) .compare-wrap { display: none; }
+.inline-link { border: 0; margin: 0 3px; padding: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.inline-link:hover { text-decoration: underline; }
+.inline-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
 #pr-url { flex: 1; min-width: 160px; padding-left: 0.9rem; }
-.pr-form .btn { align-self: stretch; }
+.pr-form .btn { align-self: stretch; background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.pr-form .btn:hover { background: var(--accent); border-color: var(--accent); filter: brightness(1.1); }
 .pr-results { margin: 1rem 1.25rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
 .pr-results summary { cursor: pointer; }
 .pr-results details[open] summary { margin-bottom: 1rem; }
@@ -1074,6 +1079,8 @@ select option.yanked {
 @media (max-width: 640px) {
   .topbar > * { padding-left: 0.85rem; padding-right: 0.85rem; }
   .diff { padding-left: 0.85rem; padding-right: 0.85rem; }
+  .pr-form .search-row { flex-direction: column; }
+  .pr-form .btn { justify-content: center; padding: 0.7rem 0.9rem; }
   .toolbar { flex-wrap: wrap; }
   .toolbar .compact-summary { flex: 1 1 100%; }
 

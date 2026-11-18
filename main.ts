@@ -1,7 +1,47 @@
+import { createHash } from "node:crypto";
+import { ifNoneMatch } from "@std/http/etag";
 import { serveDir } from "@std/http/file-server";
 import { pullRequest } from "./github.ts";
 
 const USER_AGENT = "unpackage.dev (https://github.com/leighmcculloch)";
+
+// Snapshot the page and its assets together so a fingerprint always identifies
+// the bytes served, even if files change while the server is running.
+const frontendFiles = new Map<string, {
+  body: Uint8Array<ArrayBuffer>;
+  headers: Record<string, string>;
+}>();
+let indexHtml = await Deno.readTextFile(
+  new URL("./static/index.html", import.meta.url),
+);
+for (
+  const [name, contentType] of [
+    ["style.css", "text/css"],
+    ["app.js", "text/javascript"],
+    ["index.html", "text/html"],
+  ]
+) {
+  const isPage = name === "index.html";
+  const body = isPage
+    ? new TextEncoder().encode(indexHtml)
+    : await Deno.readFile(new URL(`./static/${name}`, import.meta.url));
+  const hash = createHash("sha256").update(body).digest("hex");
+  const path = isPage ? "/" : `/${name.replace(".", `.${hash}.`)}`;
+  const file = {
+    body,
+    headers: {
+      "Content-Type": `${contentType}; charset=utf-8`,
+      "Content-Length": String(body.byteLength),
+      "Cache-Control": isPage
+        ? "no-cache"
+        : "public, max-age=31536000, immutable",
+      "ETag": `"${hash}"`,
+    },
+  };
+  frontendFiles.set(path, file);
+  if (isPage) frontendFiles.set("/index.html", file);
+  else indexHtml = indexHtml.replaceAll(`/${name}`, path);
+}
 
 // ---------- crates.io adapters ----------
 
@@ -1244,7 +1284,29 @@ export function handler(req: Request): Promise<Response> | Response {
     return new Response("not found", { status: 404 });
   }
 
-  return serveDir(req, { fsRoot: "static", quiet: true });
+  const file = frontendFiles.get(url.pathname);
+  if (file) {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return new Response(null, {
+        status: 405,
+        headers: { Allow: "GET, HEAD" },
+      });
+    }
+    const status =
+      ifNoneMatch(req.headers.get("If-None-Match"), file.headers.ETag)
+        ? 200
+        : 304;
+    return new Response(
+      status === 304 || req.method === "HEAD" ? null : file.body,
+      { status, headers: file.headers },
+    );
+  }
+
+  return serveDir(req, { fsRoot: "static", quiet: true }).then((response) => {
+    // Legacy asset URLs and errors must not be cached across deployments.
+    response.headers.set("Cache-Control", "no-cache");
+    return response;
+  });
 }
 
 if (import.meta.main) {
