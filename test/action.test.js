@@ -37,6 +37,34 @@ test("handles scoped npm packages and monorepo manifests", () => {
   assert.deepEqual(result[0], { registry: "npmjs.com", name: "@scope/pkg", oldVersion: "2.0.0", newVersion: "2.1.0" });
 });
 
+test("compares Go major-path replacements without merging coexisting majors", () => {
+  const base = "github.com/go-chi/chi";
+  for (const [oldName, oldVersion, name, newVersion] of [
+    [base, "4.1.2+incompatible", `${base}/v5`, "5.5.0"],
+    [`${base}/v5`, "5.5.0", `${base}/v12`, "12.0.1"],
+    [`${base}/v5`, "5.5.0", base, "4.1.2+incompatible"],
+  ]) {
+    assert.deepEqual(changes("go.mod", `require ${oldName} v${oldVersion}`, `require ${name} v${newVersion}`), [
+      { registry: "proxy.golang.org", name, oldVersion, newVersion },
+    ]);
+  }
+  const before = `require (\n ${base} v4.1.2+incompatible\n ${base}/v5 v5.4.0\n)`;
+  assert.deepEqual(changes("go.mod", before, `require ${base}/v5 v5.5.0`), [
+    { registry: "proxy.golang.org", name: `${base}/v5`, oldVersion: "5.4.0", newVersion: "5.5.0" },
+    { registry: "proxy.golang.org", name: base, oldVersion: "4.1.2+incompatible", newVersion: null, change: "removed" },
+  ]);
+  const ambiguous = changes("go.mod", before, `require ${base}/v6 v6.0.0`);
+  assert.equal(ambiguous.length, 3);
+  assert.ok(ambiguous.every(d => d.change === "added" || d.change === "removed"));
+  const ambiguousAdditions = changes("go.mod", `require ${base}/v6 v6.0.0`, before);
+  assert.equal(ambiguousAdditions.length, 3);
+  assert.ok(ambiguousAdditions.every(d => d.change === "added" || d.change === "removed"));
+  const addedMajor = changes("go.mod", `require ${base} v4.1.2+incompatible`, before);
+  assert.deepEqual(addedMajor, [
+    { registry: "proxy.golang.org", name: `${base}/v5`, oldVersion: null, newVersion: "5.4.0", change: "added" },
+  ]);
+});
+
 test("detects JSR changes with caret specifiers and deno.lock", () => {
   const result = changes("deno.json", '{"imports":{"@std/http":"jsr:@std/http@^1.0.0"}}', '{"imports":{"@std/http":"jsr:@std/http@^1.1.3"}}');
   assert.deepEqual(result[0], { registry: "jsr.io", name: "@std/http", oldVersion: "1.0.0", newVersion: "1.1.3" });

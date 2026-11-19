@@ -110,6 +110,20 @@ function changes(path, before, after) {
   }
   const oldDeps = extract(path, before, registry), newDeps = extract(path, after, registry);
   log("Parsed dependency file", { path, ecosystem: registry === "jsr.io" ? "Deno / JSR" : registry, registry, beforeBytes: Buffer.byteLength(before), afterBytes: Buffer.byteLength(after), beforeDependencies: [...oldDeps.values()], afterDependencies: [...newDeps.values()] });
+  if (registry === "proxy.golang.org") {
+    const base = (name) => name.startsWith("gopkg.in/") ? name : name.replace(/\/v(?:[2-9]|[1-9]\d+)$/, "");
+    const removed = [...oldDeps].filter(([key]) => !newDeps.has(key));
+    const added = [...newDeps].filter(([key]) => !oldDeps.has(key));
+    // Match exact paths first. Only pair a major-path replacement when neither
+    // side has multiple unmatched majors of the same module to choose from.
+    for (const [key, newer] of added) {
+      const matches = removed.filter(([, older]) => base(older.name) === base(newer.name));
+      if (matches.length === 1 && added.filter(([, dep]) => base(dep.name) === base(newer.name)).length === 1) {
+        oldDeps.set(key, matches[0][1]);
+        oldDeps.delete(matches[0][0]);
+      }
+    }
+  }
   const result = [];
   for (const [key, newer] of newDeps) {
     const older = oldDeps.get(key);

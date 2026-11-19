@@ -379,10 +379,13 @@ h1 .dot {
 .pr-table-wrap { overflow-x: auto; }
 .pr-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
 .pr-table th, .pr-table td { padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border); }
+.pr-table tbody tr { position: relative; }
+.pr-table tbody tr:hover, .pr-table tbody tr:focus-within { background: var(--accent-soft); }
 .pr-table td:first-child { font-family: var(--mono); overflow-wrap: anywhere; }
 .pr-table small { display: block; margin-top: 0.25rem; color: var(--muted); font-family: var(--sans); }
 .pr-table td:not(:first-child) { white-space: nowrap; }
 .pr-table a { display: inline-block; }
+.pr-table tbody a::after { content: ""; position: absolute; inset: 0; }
 .pr-note { color: var(--muted); font-size: 0.8rem; margin-bottom: 0; }
 
 #results {

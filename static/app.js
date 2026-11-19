@@ -1615,7 +1615,7 @@ async function loadPullRequest(expand = true) {
         `<td><a href="${escapeHtml(href)}">${dep.oldVersion && dep.newVersion ? "View diff" : "View source"} →</a></td></tr>`;
     }).join("");
     prDependencies.innerHTML = `<div class="pr-table-wrap"><table class="pr-table"><thead><tr><th>Dependency</th><th>Old</th><th>New</th><th>Review</th></tr></thead><tbody>${rows}</tbody></table></div>` +
-      `<p class="pr-note">Detection uses the GitHub Action’s manifest parsers; unsupported formats and unpinned dependencies may not appear.</p>`;
+      `<p class="pr-note">Dependency detection may be incomplete; unsupported formats and unpinned dependencies may not appear.</p>`;
   } catch (error) {
     if (request.signal.aborted) return;
     prStatus.textContent = error.message;
@@ -1630,6 +1630,7 @@ prForm.addEventListener("submit", (event) => {
 });
 
 prDependencies.addEventListener("click", (event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   if (!event.target.closest("a")) return;
   setPrMode(false);
   $("pr-details").open = false;
